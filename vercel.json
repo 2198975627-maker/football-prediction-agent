@@ -1,0 +1,20 @@
+{
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm run build",
+  "devCommand": "pnpm run dev",
+  "crons": [
+    {
+      "path": "/api/cron/refresh-rosters",
+      "schedule": "0 16 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-match-intelligence",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/reconcile-payments",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}

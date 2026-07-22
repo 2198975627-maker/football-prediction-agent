@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-21T13:39:25.490Z",
+  "beijingDate": "2026-07-21",
+  "previousGeneratedAt": "2026-07-19T12:55:58.042Z",
+  "addedTeams": [
+    {
+      "name": "Uruguay",
+      "kind": "national",
+      "league": "FIFA World Cup",
+      "country": "Uruguay"
+    },
+    {
+      "name": "United States U17",
+      "kind": "national",
+      "league": "FIFA U-17 World Cup",
+      "country": "United States"
+    }
+  ],
+  "removedTeams": [
+    {
+      "name": "Angers",
+      "kind": "club",
+      "league": "French Ligue 1",
+      "country": "France"
+    },
+    {
+      "name": "Auxerre",
+      "kind": "club",
+      "league": "French Ligue 1",
+      "country": "France"
+    },
+    {
+      "name": "Brest",
+      "kind": "club",
+      "league": "French Ligue 1",
+      "country": "France"
+    },
+    {
+      "name": "Le Havre",
+      "kind": "club",
+      "league": "French Ligue 1",
+      "country": "France"
+    },
+    {
+      "name": "Le Mans",
+      "kind": "club",
+      "league": "French Ligue 1",
+      "country": "France"
+    },
+    {
+      "name": "Lens",
+      "kind": "club",
+      "league": "French Ligue 1",
+      "country": "France"
+    },
+    {
+      "name": "Lille",
+      "kind": "club",
+      "league": "French Ligue 1",
+      "country": "France"
+    },
+    {
+      "name": "Lorient",
+      "kind": "club",
+      "league": "French Ligue 1",
+      "country": "France"
+    },
+    {
+      "name": "Lyon",
+      "kind": "club",
+      "league": "French Ligue 1",
+      "country": "France"
+    },
+    {
+      "name": "Marseille",
+      "kind": "club",
+      "league": "French Ligue 1",
+      "country": "France"
+    },
+    {
+      "name": "China",
+      "kind": "national",
+      "league": "World Cup Qualifying AFC",
+      "country": "China"
+    }
+  ],
+  "metadataChanges": [],
+  "rosterChanges": [],
+  "totals": {
+    "addedTeams": 2,
+    "removedTeams": 11,
+    "metadataChanges": 0,
+    "teamsWithRosterChanges": 0,
+    "addedPlayers": 0,
+    "removedPlayers": 0,
+    "changedPlayers": 0
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "mvp": [
+    {
+      "name": "Next.js",
+      "category": "web",
+      "purpose": "Web UI and API routes",
+      "secretAccess": "server-only"
+    },
+    {
+      "name": "Vercel AI SDK",
+      "category": "agent-ui",
+      "purpose": "Streaming responses and tool-call friendly UI",
+      "secretAccess": "server-only"
+    },
+    {
+      "name": "OpenAI Responses API or Agents SDK",
+      "category": "agent",
+      "purpose": "Reasoning, synthesis, and tool orchestration",
+      "secretAccess": "server-only"
+    },
+    {
+      "name": "API-Football",
+      "category": "sports-data",
+      "purpose": "Fixtures, teams, injuries, lineups, H2H, stats",
+      "secretAccess": "server-only"
+    },
+    {
+      "name": "StatsBomb Open Data / statsbombpy",
+      "category": "football-events",
+      "purpose": "Historical event samples, xG, shot maps, heatmaps, keeper events",
+      "secretAccess": "server-only-or-open-data"
+    },
+    {
+      "name": "FBref via soccerdata",
+      "category": "football-public-stats",
+      "purpose": "Season player/team statistics, xG, shooting, passing, defense, keeper tables",
+      "secretAccess": "server-only"
+    },
+    {
+      "name": "Understat via soccerdata",
+      "category": "football-public-stats",
+      "purpose": "xG trends, shot quality, player/team attacking context",
+      "secretAccess": "server-only"
+    },
+    {
+      "name": "SoFIFA via soccerdata",
+      "category": "football-reference-metadata",
+      "purpose": "Height, preferred foot, positions, static player profile reference",
+      "secretAccess": "server-only"
+    },
+    {
+      "name": "matplotlib + mplsoccer",
+      "category": "football-visualization",
+      "purpose": "Pitch visuals, shot maps, heatmaps, passing networks, report charts",
+      "secretAccess": "none"
+    },
+    {
+      "name": "SoccerAction",
+      "category": "football-modeling",
+      "purpose": "SPADL, VAEP, xT event-value modeling",
+      "secretAccess": "server-only"
+    },
+    {
+      "name": "Tavily or Firecrawl",
+      "category": "search-extraction",
+      "purpose": "Public source research and page extraction",
+      "secretAccess": "server-only"
+    },
+    {
+      "name": "Stripe Checkout",
+      "category": "payments",
+      "purpose": "Prepayment and balance top-up",
+      "secretAccess": "server-only"
+    },
+    {
+      "name": "Supabase",
+      "category": "auth-database",
+      "purpose": "Users, jobs, balances, ledger",
+      "secretAccess": "mixed-use-anon-client-service-server"
+    },
+    {
+      "name": "Upstash Redis Rate Limit",
+      "category": "abuse-control",
+      "purpose": "Rate limiting before provider calls",
+      "secretAccess": "server-only"
+    }
+  ],
+  "blockedUntilReview": [
+    "odds APIs",
+    "auto-betting tools",
+    "private social media scraping",
+    "stored BYOK keys",
+    "browser automation against sites with unclear terms"
+  ]
+}

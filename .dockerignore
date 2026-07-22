@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+!.env.production.example
+npm-debug.log*
+pnpm-debug.log*
+tsconfig.tsbuildinfo
+README.local.md
+data/football-rosters/history
+data/football-rosters/changes
+data/football-rosters-smoke
+docs
+tests

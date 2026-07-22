@@ -1,0 +1,7 @@
+pandas>=2.2
+requests>=2.32
+matplotlib>=3.8
+mplsoccer>=1.5
+soccerdata>=1.8
+statsbombpy>=1.13
+socceraction>=1.5

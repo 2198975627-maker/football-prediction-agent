@@ -1,0 +1,4 @@
+interface:
+  display_name: "Football Roster Refresh"
+  short_description: "Daily roster and player data refresh"
+  default_prompt: "Use $football-roster-refresh to refresh football team rosters and player data."

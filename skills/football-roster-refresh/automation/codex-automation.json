@@ -1,0 +1,12 @@
+{
+  "name": "Football roster refresh daily",
+  "schedule": {
+    "frequency": "daily",
+    "localTime": "00:00",
+    "timezone": "Asia/Shanghai"
+  },
+  "workspace": "C:\\Users\\HP\\Documents\\New project\\football-prediction-agent",
+  "prompt": "Run the no-AI football roster refresh script from the workspace root. Execute: node skills\\football-roster-refresh\\scripts\\refresh-rosters.mjs --output data\\football-rosters. Do not print environment variables, API keys, or authorization headers. Report only summary counts and errors.",
+  "modelTokenUse": "Codex scheduler uses a Codex run; the refresh script itself does not call an AI model.",
+  "recommendedForZeroModelCost": "Use automation\\windows-task.json and scripts\\register-windows-task.ps1 instead."
+}

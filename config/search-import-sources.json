@@ -1,0 +1,417 @@
+{
+  "version": "2026-07-06",
+  "policy": {
+    "primaryRule": "Core prediction evidence must come from official sources, major sports platforms, or structured sports-data providers. Community and social posts are reference-only leads.",
+    "numericDataRule": "Player event metrics, lineups, injuries, xG, goalkeeper data, and penalty statistics must come from structured providers, official sources, or major sports platforms with explicit data pages.",
+    "communityRule": "Social media, forums, comments, and fan posts cannot be used as prediction evidence or numeric inputs. They can only flag topics for verification.",
+    "privacyRule": "Do not collect private-life claims, gossip, or social speculation unless it is credible, public, directly match-related, and source-verified.",
+    "scrapingRule": "Prefer APIs, RSS, and official feeds. Do not bypass login, paywalls, CAPTCHA, anti-bot checks, or robots restrictions.",
+    "bettingRule": "Odds and betting-tip sources are not allowed as primary evidence."
+  },
+  "software": [
+    {
+      "id": "tavily",
+      "name": "Tavily",
+      "category": "agent-search",
+      "url": "https://docs.tavily.com/welcome",
+      "priority": "recommended",
+      "importMethod": "search/extract/crawl API",
+      "useFor": ["fresh news discovery", "official announcement lookup", "source triangulation"],
+      "secretAccess": "server-only",
+      "notes": "Good first production search provider for AI agents."
+    },
+    {
+      "id": "firecrawl",
+      "name": "Firecrawl",
+      "category": "page-extraction",
+      "url": "https://docs.firecrawl.dev/api-reference/introduction",
+      "priority": "recommended",
+      "importMethod": "scrape/crawl/map API",
+      "useFor": ["turn public pages into markdown", "extract structured facts", "crawl official team pages"],
+      "secretAccess": "server-only",
+      "notes": "Use path filters and crawl limits. Respect robots and source terms."
+    },
+    {
+      "id": "rsshub",
+      "name": "RSSHub",
+      "category": "rss",
+      "url": "https://github.com/DIYgod/RSSHub",
+      "priority": "recommended",
+      "importMethod": "self-hosted RSS routes",
+      "useFor": ["news feeds", "community feed aggregation", "low-cost monitoring"],
+      "secretAccess": "server-only-or-none",
+      "notes": "Useful for sites without native RSS. Self-host to avoid relying on public instances."
+    },
+    {
+      "id": "crawlee",
+      "name": "Crawlee",
+      "category": "crawler-library",
+      "url": "https://crawlee.dev/",
+      "priority": "review-before-production",
+      "importMethod": "open-source crawler",
+      "useFor": ["allowed public pages", "robots-compliant crawls", "fallback extraction"],
+      "secretAccess": "server-only",
+      "notes": "Use only where crawling is allowed and API/RSS is unavailable."
+    },
+    {
+      "id": "playwright",
+      "name": "Playwright",
+      "category": "browser-automation",
+      "url": "https://playwright.dev/",
+      "priority": "fallback-only",
+      "importMethod": "browser automation",
+      "useFor": ["manual QA", "allowed dynamic pages"],
+      "secretAccess": "server-only",
+      "notes": "Do not use to bypass login, paywalls, CAPTCHA, or anti-bot systems."
+    }
+  ],
+  "structuredSportsData": [
+    {
+      "id": "thesportsdb",
+      "name": "TheSportsDB",
+      "url": "https://www.thesportsdb.com/docs_api_guide",
+      "access": "free/demo plus paid tiers",
+      "priority": "mvp-live",
+      "trustTier": "primary-for-metadata",
+      "useFor": ["teams", "players", "events", "badges", "venues"],
+      "limitations": ["coverage varies", "free/demo key has limits", "not enough for deep event-level player matchup modeling"]
+    },
+    {
+      "id": "football-data-org",
+      "name": "football-data.org",
+      "url": "https://www.football-data.org/documentation/api",
+      "access": "API token",
+      "priority": "recommended",
+      "trustTier": "primary",
+      "useFor": ["competitions", "matches", "teams", "standings", "head-to-head"],
+      "limitations": ["player-event depth is limited", "tier limits vary"]
+    },
+    {
+      "id": "api-football",
+      "name": "API-Football",
+      "url": "https://www.api-football.com/documentation-v3",
+      "access": "API key",
+      "priority": "recommended-for-production",
+      "trustTier": "primary",
+      "useFor": ["fixtures", "events", "lineups", "injuries", "players", "statistics"],
+      "limitations": ["paid usage likely needed for production", "verify endpoint coverage by league"]
+    },
+    {
+      "id": "sportmonks",
+      "name": "Sportmonks Football API",
+      "url": "https://docs.sportmonks.com/football/",
+      "access": "API key",
+      "priority": "paid-review",
+      "trustTier": "primary",
+      "useFor": ["deep football data", "lineups", "players", "statistics", "coaches"],
+      "limitations": ["paid data cost must go through billing guard"]
+    },
+    {
+      "id": "nami-sports",
+      "name": "纳米数据体育 API",
+      "url": "https://www.nami.com/",
+      "access": "commercial/API credentials",
+      "priority": "china-production-review",
+      "trustTier": "primary-after-contract",
+      "useFor": ["China-access sports data", "fixtures", "live scores", "lineups", "technical statistics", "heatmap-like data"],
+      "limitations": ["confirm API docs, sample responses, exact football coverage, and commercial authorization before production"]
+    },
+    {
+      "id": "juhe-football",
+      "name": "聚合数据足球赛事 API",
+      "url": "https://www.juhe.cn/docs",
+      "access": "API key",
+      "priority": "china-fallback-review",
+      "trustTier": "primary-for-basic-fixture-data-after-verification",
+      "useFor": ["fixtures", "results", "standings", "basic match data"],
+      "limitations": ["not a deep player-event source unless endpoint samples prove otherwise"]
+    },
+    {
+      "id": "feijing-sports",
+      "name": "飞鲸体育数据",
+      "url": "https://www.feijing88.com/",
+      "access": "commercial/API credentials",
+      "priority": "china-paid-review",
+      "trustTier": "primary-after-contract",
+      "useFor": ["domestic sports-data API candidate", "fixtures", "lineups", "statistics", "events"],
+      "limitations": ["requires terms review, sample responses, cost guard, and field coverage verification"]
+    },
+    {
+      "id": "apiballs",
+      "name": "全速数据 / APIBalls",
+      "url": "https://www.apiballs.com/",
+      "access": "commercial/API credentials",
+      "priority": "china-paid-review",
+      "trustTier": "primary-after-contract",
+      "useFor": ["domestic sports-data API candidate", "fixtures", "lineups", "statistics", "events"],
+      "limitations": ["requires terms review, sample responses, cost guard, and field coverage verification"]
+    },
+    {
+      "id": "statsbomb-open-data",
+      "name": "StatsBomb Open Data",
+      "url": "https://github.com/statsbomb/open-data",
+      "access": "open GitHub dataset",
+      "priority": "analytics-reference",
+      "trustTier": "primary-for-historical-event-data",
+      "useFor": ["event-data schema", "shot/event modeling examples", "offline feature engineering"],
+      "limitations": ["not comprehensive live coverage", "use within license/research terms"]
+    },
+    {
+      "id": "fbref",
+      "name": "FBref",
+      "url": "https://fbref.com/",
+      "access": "public web via server-side cache/soccerdata after terms review",
+      "priority": "advanced-public-stats",
+      "trustTier": "structured-public-reference",
+      "useFor": ["season player statistics", "team statistics", "xG tables", "shooting", "passing", "defense", "keeper tables"],
+      "limitations": ["not a live event API", "respect site terms and conservative rate limits", "cache before use"]
+    },
+    {
+      "id": "understat",
+      "name": "Understat",
+      "url": "https://understat.com/",
+      "access": "public web via server-side cache/soccerdata after terms review",
+      "priority": "xg-reference",
+      "trustTier": "structured-public-reference",
+      "useFor": ["xG trend reference", "shot quality", "team attacking context", "player xG context"],
+      "limitations": ["xG model is not a universal official standard", "coverage is limited", "do not use as sole prediction evidence"]
+    },
+    {
+      "id": "sofifa",
+      "name": "SoFIFA",
+      "url": "https://sofifa.com/",
+      "access": "public web via server-side cache/soccerdata after terms review",
+      "priority": "static-profile-reference",
+      "trustTier": "reference-only-metadata",
+      "useFor": ["height", "preferred foot", "positions", "body profile", "game-derived player attributes"],
+      "limitations": ["game database, not match truth", "do not use for injuries, lineups, availability, or official performance facts"]
+    },
+    {
+      "id": "soccerdata",
+      "name": "soccerdata Python",
+      "url": "https://soccerdata.readthedocs.io/",
+      "access": "server-side Python connector",
+      "priority": "python-connector",
+      "trustTier": "connector-not-source",
+      "useFor": ["FBref connector", "Understat connector", "SoFIFA connector", "offline cached analysis"],
+      "limitations": ["not a data owner", "downstream source terms still apply", "run server-side only"]
+    },
+    {
+      "id": "openfootball",
+      "name": "openfootball / football.db",
+      "url": "https://github.com/openfootball",
+      "access": "open GitHub datasets",
+      "priority": "fallback-reference",
+      "trustTier": "primary-for-open-fixture-reference",
+      "useFor": ["historical fixtures", "teams", "world cup and league reference data"],
+      "limitations": ["not a live injury/player-event source"]
+    }
+  ],
+  "publicNewsAndOfficial": [
+    {
+      "id": "official-club-sites",
+      "name": "Official club/team sites",
+      "access": "public web/RSS where available",
+      "priority": "highest",
+      "trustTier": "primary",
+      "useFor": ["injuries", "lineups", "press conferences", "coach statements", "transfers"],
+      "verification": "Prefer official source over media or posts."
+    },
+    {
+      "id": "league-federation-sites",
+      "name": "League and federation sites",
+      "access": "public web/API/RSS where available",
+      "priority": "highest",
+      "trustTier": "primary",
+      "useFor": ["fixtures", "discipline", "suspensions", "match reports", "regulations"],
+      "verification": "Use for canonical competition facts."
+    },
+    {
+      "id": "bbc-football",
+      "name": "BBC Sport Football",
+      "url": "https://www.bbc.com/sport/football",
+      "access": "public web/RSS where available",
+      "priority": "recommended",
+      "trustTier": "media",
+      "useFor": ["news", "injury reporting", "manager quotes", "match previews"]
+    },
+    {
+      "id": "guardian-football",
+      "name": "The Guardian Football",
+      "url": "https://www.theguardian.com/football",
+      "access": "public web/RSS where available",
+      "priority": "recommended",
+      "trustTier": "media",
+      "useFor": ["features", "tactical reporting", "team news", "manager quotes"]
+    },
+    {
+      "id": "espn-soccer",
+      "name": "ESPN Soccer",
+      "url": "https://www.espn.com/soccer/",
+      "access": "public web/RSS where available",
+      "priority": "recommended",
+      "trustTier": "media",
+      "useFor": ["match reports", "lineups", "injury context", "international coverage"]
+    },
+    {
+      "id": "migu-sports",
+      "name": "咪咕体育",
+      "url": "https://www.migu.cn/",
+      "access": "public web/app pages; some content may be paid, app-only, or rights-protected",
+      "priority": "cn-rights-platform-context",
+      "trustTier": "media-and-platform",
+      "useFor": ["Chinese sports news", "fixture context", "official event cooperation announcements", "public match metadata", "broadcast availability context"],
+      "limitations": ["do not bypass app login, member paywalls, DRM, video protections, WAF, or CAPTCHA", "do not transcribe or reuse protected live/video content without license", "verify match facts with official or structured sources"]
+    },
+    {
+      "id": "iqiyi-sports",
+      "name": "爱奇艺体育",
+      "url": "https://ssports.iqiyi.com/",
+      "scheduleUrl": "https://sports.iqiyi.com/sport/schedule.html",
+      "access": "public web/app pages; some content may be paid, app-only, or rights-protected",
+      "priority": "cn-rights-platform-context",
+      "trustTier": "media-and-platform",
+      "useFor": ["football news", "public schedules", "match previews", "broadcast availability context", "public video metadata"],
+      "limitations": ["do not bypass app login, member paywalls, DRM, video protections, WAF, or CAPTCHA", "do not copy protected video/commentary", "verify player availability and match facts with official or structured sources"]
+    },
+    {
+      "id": "tencent-sports",
+      "name": "腾讯体育",
+      "url": "https://sports.qq.com/",
+      "scheduleUrl": "https://sports.qq.com/kbsweb/",
+      "access": "public web/app pages; some content may be dynamic, app-oriented, or rights-protected",
+      "priority": "cn-media-platform-context",
+      "trustTier": "major-platform",
+      "useFor": ["sports news", "public schedules", "real-time match pages where accessible", "major-platform match context"],
+      "limitations": ["do not bypass login, WAF, CAPTCHA, paywalls, or app-only restrictions", "community content is context only"]
+    },
+    {
+      "id": "dongqiudi",
+      "name": "懂球帝",
+      "url": "https://www.dongqiudi.com/",
+      "matchUrl": "https://m.dongqiudi.com/match",
+      "access": "public web/app pages",
+      "priority": "cn-context",
+      "trustTier": "major-platform",
+      "useFor": ["Chinese football news", "match pages", "lineup and score context when public", "data tables such as standings and scorers when public"],
+      "limitations": ["user comments and social-style posts are reference-only", "verify important claims with official, structured, or major-platform data"]
+    },
+    {
+      "id": "zhibo8-football",
+      "name": "直播吧足球",
+      "url": "https://www.zhibo8.com/zuqiu/",
+      "access": "public web pages",
+      "priority": "cn-media-context",
+      "trustTier": "media",
+      "useFor": ["football news leads", "public schedule links"],
+      "limitations": ["comments and forum content are reference-only", "verify claims with official/API/major-platform sources"]
+    },
+    {
+      "id": "sina-sports",
+      "name": "新浪体育",
+      "url": "https://sports.sina.com.cn/",
+      "access": "public web pages",
+      "priority": "cn-media-context",
+      "trustTier": "media",
+      "useFor": ["sports news", "match reports", "public interviews", "transfer and coach news leads"],
+      "limitations": ["verify important player availability claims with official or structured sources"]
+    },
+    {
+      "id": "hupu-football",
+      "name": "虎扑足球",
+      "url": "https://soccer.hupu.com/",
+      "access": "public web pages may have verification/WAF",
+      "priority": "reference-only",
+      "trustTier": "reference-only",
+      "useFor": ["fan sentiment reference", "topics to verify elsewhere"],
+      "limitations": ["do not bypass verification", "never use posts as facts or numeric prediction inputs"]
+    }
+  ],
+  "openSportsPosts": [
+    {
+      "id": "reddit-soccer",
+      "name": "Reddit r/soccer",
+      "url": "https://www.reddit.com/r/soccer/",
+      "feedUrl": "https://www.reddit.com/r/soccer/.rss",
+      "access": "public subreddit/RSS subject to Reddit limits",
+      "priority": "reference-only",
+      "trustTier": "reference-only",
+      "useFor": ["topic discovery only", "fan sentiment reference only"],
+      "verification": "Use only as a lead; verify factual claims elsewhere."
+    },
+    {
+      "id": "reddit-football",
+      "name": "Reddit r/football",
+      "url": "https://www.reddit.com/r/football/",
+      "feedUrl": "https://www.reddit.com/r/football/.rss",
+      "access": "public subreddit/RSS subject to Reddit limits",
+      "priority": "reference-only",
+      "trustTier": "reference-only",
+      "useFor": ["topic discovery only", "fan sentiment reference only"],
+      "verification": "Use only as a lead; verify factual claims elsewhere."
+    },
+    {
+      "id": "reddit-worldcup",
+      "name": "Reddit r/worldcup",
+      "url": "https://www.reddit.com/r/worldcup/",
+      "feedUrl": "https://www.reddit.com/r/worldcup/.rss",
+      "access": "public subreddit/RSS subject to Reddit limits",
+      "priority": "reference-only",
+      "trustTier": "reference-only",
+      "useFor": ["topic discovery only", "fan sentiment reference only"],
+      "verification": "Use only as a lead; verify factual claims elsewhere."
+    },
+    {
+      "id": "reddit-club-subs",
+      "name": "Club subreddits",
+      "examples": ["https://www.reddit.com/r/Barca/", "https://www.reddit.com/r/reddevils/", "https://www.reddit.com/r/Gunners/"],
+      "access": "public subreddit/RSS subject to Reddit limits",
+      "priority": "reference-only",
+      "trustTier": "reference-only",
+      "useFor": ["topic discovery only", "fan sentiment reference only"],
+      "verification": "Use only as a lead; verify factual claims elsewhere."
+    },
+    {
+      "id": "hupu-team-boards",
+      "name": "虎扑球队专区/足球话题区",
+      "examples": ["https://m.hupu.com/bbs/topic", "https://m.hupu.com/bbs/manutd"],
+      "access": "public pages may require verification",
+      "priority": "reference-only",
+      "trustTier": "reference-only",
+      "useFor": ["Chinese fan sentiment reference only", "topics to verify elsewhere"],
+      "verification": "Do not automate through WAF/CAPTCHA. Use as context only."
+    },
+    {
+      "id": "dongqiudi-discussion",
+      "name": "懂球帝动态/懂球号",
+      "examples": ["https://hao.dongqiudi.com/", "https://m.dongqiudi.com/home"],
+      "access": "public web/app pages",
+      "priority": "reference-only",
+      "trustTier": "reference-only",
+      "useFor": ["public commentary reference only", "topics to verify elsewhere"],
+      "verification": "Separate media article facts from user commentary."
+    }
+  ],
+  "blockedOrReview": [
+    {
+      "id": "x-twitter",
+      "name": "X/Twitter posts",
+      "reason": "Access, scraping, and reliability risk. Use official APIs or user-provided links only after review."
+    },
+    {
+      "id": "private-social-media",
+      "name": "Private or login-only social media",
+      "reason": "Privacy and terms risk."
+    },
+    {
+      "id": "betting-tip-sites",
+      "name": "Betting-tip and odds-prediction pages",
+      "reason": "Compliance risk and not allowed as primary evidence."
+    },
+    {
+      "id": "paywalled-sites",
+      "name": "Paywalled journalism or data sites",
+      "reason": "Do not bypass paywalls. Use licensed access only."
+    }
+  ]
+}

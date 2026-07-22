@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+
+# framework output
+.next/
+out/
+dist/
+build/
+.vercel/
+
+# secrets
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# local data
+*.sqlite
+*.db
+tmp/
+coverage/
+*.tsbuildinfo
+
+# generated roster snapshots belong in Supabase/object storage
+data/football-rosters/history/
+data/football-rosters/changes/
+data/football-rosters-smoke/
