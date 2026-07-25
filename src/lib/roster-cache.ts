@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 export type RosterSnapshot = {
@@ -27,7 +27,6 @@ type SupabaseCacheRow = {
 type SupabaseConfig = {
   url: string;
   readKey: string;
-  writeKey: string | null;
   table: string;
 };
 
@@ -37,13 +36,6 @@ type RosterCacheRead = {
   storage: "supabase" | "local";
   storageUrl: string;
   warning?: string;
-};
-
-type RosterCacheWriteInput = {
-  snapshot: RosterSnapshot;
-  changes: unknown;
-  outputDir?: string;
-  writeLocal?: boolean;
 };
 
 function readText(name: string, fallback = "") {
@@ -63,7 +55,6 @@ function getSupabaseConfig(): SupabaseConfig | null {
   return {
     url,
     readKey: serviceRoleKey || anonKey,
-    writeKey: serviceRoleKey || null,
     table
   };
 }
@@ -100,32 +91,6 @@ async function readSupabaseItem(config: SupabaseConfig, cacheKey: string) {
   return rows[0]?.payload ?? null;
 }
 
-async function writeSupabaseItem(config: SupabaseConfig, cacheKey: string, payload: unknown) {
-  if (!config.writeKey) {
-    throw new Error("Supabase roster cache writes require SUPABASE_SERVICE_ROLE_KEY.");
-  }
-
-  const url = `${config.url}/rest/v1/${encodeURIComponent(config.table)}?on_conflict=cache_key`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      ...supabaseHeaders(config.writeKey),
-      Prefer: "resolution=merge-duplicates,return=minimal"
-    },
-    body: JSON.stringify([
-      {
-        cache_key: cacheKey,
-        payload,
-        updated_at: new Date().toISOString()
-      }
-    ])
-  });
-
-  if (!response.ok) {
-    throw new Error(`Supabase roster cache write failed with ${response.status}.`);
-  }
-}
-
 async function readLocalJson<T>(filePath: string): Promise<T | null> {
   try {
     return JSON.parse(await readFile(filePath, "utf8")) as T;
@@ -137,19 +102,13 @@ async function readLocalJson<T>(filePath: string): Promise<T | null> {
   }
 }
 
-async function atomicWriteJson(filePath: string, data: unknown) {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-  await rename(tempPath, filePath);
-}
-
 function localCacheDir(outputDir?: string) {
   return outputDir ? path.resolve(outputDir) : path.join(process.cwd(), "data", "football-rosters");
 }
 
 export async function readRosterCache(outputDir?: string): Promise<RosterCacheRead | null> {
   const config = getSupabaseConfig();
+  const isProduction = process.env.NODE_ENV === "production" || readText("APP_ENV") === "production";
   if (config) {
     try {
       const snapshot = (await readSupabaseItem(config, "latest")) as RosterSnapshot | null;
@@ -163,6 +122,9 @@ export async function readRosterCache(outputDir?: string): Promise<RosterCacheRe
         };
       }
     } catch (error) {
+      if (isProduction) {
+        throw error;
+      }
       const local = await readRosterCacheFromLocal(outputDir);
       if (local) {
         return {
@@ -172,6 +134,10 @@ export async function readRosterCache(outputDir?: string): Promise<RosterCacheRe
       }
       throw error;
     }
+  }
+
+  if (isProduction) {
+    return null;
   }
 
   return readRosterCacheFromLocal(outputDir);
@@ -191,29 +157,4 @@ async function readRosterCacheFromLocal(outputDir?: string): Promise<RosterCache
     storage: "local",
     storageUrl: "local:data/football-rosters/latest.json"
   };
-}
-
-export async function writeRosterCache({ snapshot, changes, outputDir, writeLocal = true }: RosterCacheWriteInput) {
-  const destinations: string[] = [];
-  const config = getSupabaseConfig();
-  const date = snapshot.beijingDate || new Date().toISOString().slice(0, 10);
-
-  if (config?.writeKey) {
-    await writeSupabaseItem(config, "latest", snapshot);
-    await writeSupabaseItem(config, "latest-changes", changes);
-    await writeSupabaseItem(config, `history:${date}`, snapshot);
-    await writeSupabaseItem(config, `changes:${date}`, changes);
-    destinations.push("supabase");
-  }
-
-  if (writeLocal) {
-    const cacheDir = localCacheDir(outputDir);
-    await atomicWriteJson(path.join(cacheDir, "latest.json"), snapshot);
-    await atomicWriteJson(path.join(cacheDir, "latest-changes.json"), changes);
-    await atomicWriteJson(path.join(cacheDir, "history", `${date}.json`), snapshot);
-    await atomicWriteJson(path.join(cacheDir, "changes", `${date}.json`), changes);
-    destinations.push("local");
-  }
-
-  return destinations;
 }

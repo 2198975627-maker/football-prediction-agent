@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
 import process from "node:process";
 
 const BASE_URL = "https://www.thesportsdb.com/api/v1/json";
@@ -119,22 +117,16 @@ const africa = new Set(["Morocco", "Egypt", "Senegal", "Nigeria", "Ghana", "Came
 
 function parseArgs(argv) {
   const args = {
-    output: path.join(process.cwd(), "data", "football-rosters"),
     maxTeams: 120,
     maxPlayersPerTeam: 80,
     concurrency: 4,
-    dryRun: false,
-    skipLocalWrite: false,
-    cloudRequired: false
+    dryRun: false
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const item = argv[index];
     const next = argv[index + 1];
-    if (item === "--output" && next) {
-      args.output = path.resolve(next);
-      index += 1;
-    } else if (item === "--max-teams" && next) {
+    if (item === "--max-teams" && next) {
       args.maxTeams = Math.max(1, Number(next) || args.maxTeams);
       index += 1;
     } else if (item === "--max-players-per-team" && next) {
@@ -145,10 +137,6 @@ function parseArgs(argv) {
       index += 1;
     } else if (item === "--dry-run") {
       args.dryRun = true;
-    } else if (item === "--skip-local-write") {
-      args.skipLocalWrite = true;
-    } else if (item === "--cloud-required") {
-      args.cloudRequired = true;
     }
   }
 
@@ -613,51 +601,6 @@ function diffSnapshots(previous, current) {
   };
 }
 
-async function readPreviousSnapshot(outputDir) {
-  try {
-    return JSON.parse(await readFile(path.join(outputDir, "latest.json"), "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-async function atomicWriteJson(filePath, data) {
-  const tempPath = `${filePath}.${process.pid}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-  await rename(tempPath, filePath);
-}
-
-async function writeSummary(outputDir, snapshot, changes) {
-  const lines = [
-    `# Football roster refresh`,
-    ``,
-    `Generated: ${snapshot.generatedAt}`,
-    `Beijing time: ${snapshot.beijingTime}`,
-    `Teams: ${snapshot.totals.teams}`,
-    `Players: ${snapshot.totals.players}`,
-    `Club teams: ${snapshot.totals.clubs}`,
-    `National teams: ${snapshot.totals.nationalTeams}`,
-    ``,
-    `## Changes versus previous snapshot`,
-    ``,
-    `Added teams: ${changes.totals.addedTeams}`,
-    `Removed teams: ${changes.totals.removedTeams}`,
-    `Teams with roster changes: ${changes.totals.teamsWithRosterChanges}`,
-    `Added players: ${changes.totals.addedPlayers}`,
-    `Removed players: ${changes.totals.removedPlayers}`,
-    `Changed players: ${changes.totals.changedPlayers}`,
-    ``
-  ];
-  await writeFile(path.join(outputDir, "summary.md"), lines.join("\n"), "utf8");
-}
-
-async function ensureOutputDirs(outputDir) {
-  await mkdir(outputDir, { recursive: true });
-  await mkdir(path.join(outputDir, "history"), { recursive: true });
-  await mkdir(path.join(outputDir, "changes"), { recursive: true });
-  await mkdir(path.join(outputDir, "logs"), { recursive: true });
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const apiKey = process.env.THESPORTSDB_API_KEY?.trim() || PUBLIC_THESPORTSDB_DEMO_KEY;
@@ -666,11 +609,8 @@ async function main() {
   const startedAt = new Date().toISOString();
 
   console.log(`[roster-refresh] start ${startedAt}`);
-  console.log(`[roster-refresh] output ${args.output}`);
   console.log(`[roster-refresh] provider TheSportsDB (${apiKeyMode})`);
-  if (args.skipLocalWrite) {
-    console.log("[roster-refresh] local-write=skipped");
-  }
+  console.log("[roster-refresh] storage cloud-only");
 
   const rawTeams = await fetchTeams(apiKey, args.maxTeams);
   const teams = await mapConcurrent(rawTeams, args.concurrency, async (team, index) => {
@@ -701,7 +641,7 @@ async function main() {
     teams
   };
 
-  const previous = (await readPreviousCloudSnapshot()) ?? (await readPreviousSnapshot(args.output));
+  const previous = await readPreviousCloudSnapshot();
   const changes = {
     schemaVersion: 1,
     generatedAt: snapshot.generatedAt,
@@ -714,16 +654,7 @@ async function main() {
     return;
   }
 
-  if (!args.skipLocalWrite) {
-    await ensureOutputDirs(args.output);
-    await atomicWriteJson(path.join(args.output, "latest.json"), snapshot);
-    await atomicWriteJson(path.join(args.output, "latest-changes.json"), changes);
-    await atomicWriteJson(path.join(args.output, "history", `${beijing.date}.json`), snapshot);
-    await atomicWriteJson(path.join(args.output, "changes", `${beijing.date}.json`), changes);
-    await writeSummary(args.output, snapshot, changes);
-  }
-
-  await writeCloudCache(snapshot, changes, args.cloudRequired);
+  await writeCloudCache(snapshot, changes, true);
 
   console.log(`[roster-refresh] teams=${snapshot.totals.teams} players=${snapshot.totals.players}`);
   console.log(`[roster-refresh] roster-change-teams=${changes.totals.teamsWithRosterChanges}`);

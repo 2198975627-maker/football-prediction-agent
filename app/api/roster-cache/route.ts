@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Roster cache not found. Run pnpm roster:refresh or configure Supabase roster cache before using the daily cache."
+          error: "Cloud roster cache not found. Configure Supabase and run the deployment cron before using the daily cache."
         },
         { status: 404 }
       );
@@ -51,8 +51,8 @@ export async function GET(request: Request) {
       warning: cache.warning,
       notice:
         cache.storage === "supabase"
-          ? "Loaded from the cloud roster cache. The refresh script does not call an AI model."
-          : "Loaded from the local roster cache. The refresh script does not call an AI model."
+          ? "Loaded from the cloud roster cache. The refresh job does not call an AI model."
+          : "Loaded from the bundled development snapshot. Production refreshes are cloud-only."
     });
   } catch (error) {
     return NextResponse.json(

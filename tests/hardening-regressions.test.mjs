@@ -42,3 +42,15 @@ test("AI evidence includes concrete recent and head-to-head matches", async () =
   assert.match(prompt, /recentMatches: \(data\.recentMatches/);
   assert.match(prompt, /headToHeadMatches: \(data\.headToHeadMatches/);
 });
+
+test("production roster refresh remains cloud-only", async () => {
+  const refresh = await source("skills/football-roster-refresh/scripts/refresh-rosters.mjs");
+  const cache = await source("src/lib/roster-cache.ts");
+  const packageJson = await source("package.json");
+
+  assert.match(refresh, /storage cloud-only/);
+  assert.match(refresh, /writeCloudCache\(snapshot, changes, true\)/);
+  assert.doesNotMatch(refresh, /\bwriteFile\b|\bmkdir\b|latest\.json/);
+  assert.match(cache, /if \(isProduction\) \{\s+throw error;/);
+  assert.doesNotMatch(packageJson, /roster:refresh/);
+});

@@ -1,9 +1,14 @@
 # Cloud Roster Cache
 
-This app supports two roster-cache modes:
+Production roster refresh is cloud-only:
 
-- Local file cache for development: `data/football-rosters/latest.json`.
-- Supabase cloud cache for deployment: table `football_roster_cache`.
+- Vercel Cron triggers the website API route.
+- The route collects provider data on the cloud runtime.
+- Supabase stores the latest snapshot, changes, and dated history.
+- The user's computer is not part of the refresh workflow.
+
+The JSON files under `data/football-rosters` are bundled development samples only.
+They are never refreshed automatically and are never used as a production fallback.
 
 ## Supabase Setup
 
@@ -45,6 +50,8 @@ That is `00:00` Beijing time.
 ## Runtime Behavior
 
 - `/api/cron/refresh-rosters` refreshes roster data and writes it to Supabase.
-- `/api/roster-cache` reads Supabase first, then falls back to local JSON.
+- `/api/roster-cache` reads Supabase in production.
+- Local development may read the bundled sample when Supabase is not configured.
 - The browser never sees Supabase service keys.
-- The refresh script does not call an AI model, so it does not spend OpenAI tokens.
+- No Windows Task Scheduler or Codex desktop automation is used.
+- The refresh job does not call an AI model, so it does not spend OpenAI tokens.

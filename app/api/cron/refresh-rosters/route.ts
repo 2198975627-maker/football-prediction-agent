@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
-import path from "node:path";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import { isSupabaseRosterCacheWritable } from "@/src/lib/roster-cache";
@@ -66,7 +65,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const refreshScript = path.join(process.cwd(), "skills", "football-roster-refresh", "scripts", "refresh-rosters.mjs");
+  const refreshScript = `${process.cwd()}/skills/football-roster-refresh/scripts/refresh-rosters.mjs`;
   const maxTeams = readNumber("ROSTER_REFRESH_MAX_TEAMS", 72, 8, 160);
   const maxPlayersPerTeam = readNumber("ROSTER_REFRESH_MAX_PLAYERS_PER_TEAM", 40, 5, 100);
 
@@ -75,14 +74,10 @@ export async function GET(request: Request) {
       process.execPath,
       [
         refreshScript,
-        "--output",
-        path.join("/tmp", "football-rosters"),
         "--max-teams",
         String(maxTeams),
         "--max-players-per-team",
-        String(maxPlayersPerTeam),
-        "--skip-local-write",
-        "--cloud-required"
+        String(maxPlayersPerTeam)
       ],
       {
         timeout: 55_000,
