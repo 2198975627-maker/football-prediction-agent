@@ -201,6 +201,21 @@ type LiveTeamResponse = {
   teams?: TeamProfile[];
 };
 
+function describeTeamImport(data: LiveTeamResponse, teams: TeamProfile[]) {
+  const clubs = teams.filter((team) => team.kind === "club");
+  const clubBadges = clubs.filter((team) => Boolean(team.badgeUrl)).length;
+  const providerRosters = teams.filter((team) => team.rosterStatus === "provider").length;
+  const source =
+    data.storage === "supabase"
+      ? "云端缓存"
+      : data.storage === "local"
+        ? "开发快照"
+        : data.source?.name ?? "联网数据源";
+  const updated = data.snapshot?.beijingDate ? ` · 更新 ${data.snapshot.beijingDate}` : "";
+
+  return `${source} · ${teams.length} 支 · 俱乐部队徽 ${clubBadges}/${clubs.length} · 正式名单 ${providerRosters} 队${updated}`;
+}
+
 type EventHeatmapPoint = {
   x: number;
   y: number;
@@ -2124,7 +2139,7 @@ export default function Home() {
             setLiveTeams((current) => mergeLiveTeams(current, cachedTeams));
             setLiveImport({
               loading: false,
-              message: `${cached.storage === "supabase" ? "云端缓存" : "每日缓存"} · 已载入 ${cachedTeams.length} 支球队${cached.snapshot?.beijingDate ? `（${cached.snapshot.beijingDate}）` : ""}`,
+              message: describeTeamImport(cached, cachedTeams),
               error: null
             });
             return;
@@ -2147,7 +2162,7 @@ export default function Home() {
         setLiveTeams((current) => mergeLiveTeams(current, teams));
         setLiveImport({
           loading: false,
-          message: `${data.source?.name ?? "数据源"} · 已自动载入 ${teams.length} 支球队队徽`,
+          message: describeTeamImport(data, teams),
           error: null
         });
       } catch (err) {
@@ -2226,7 +2241,7 @@ export default function Home() {
       setLiveTeams((current) => mergeLiveTeams(current, teams));
       setLiveImport({
         loading: false,
-        message: `${data.source?.name ?? "数据源"} · 已导入 ${teams.length} 支球队`,
+        message: describeTeamImport(data, teams),
         error: null
       });
     } catch (err) {
@@ -2817,7 +2832,7 @@ export default function Home() {
 
             <div className="live-import-card" aria-live="polite">
               <div>
-                <strong>真实数据源</strong>
+                <strong>球队目录与队徽</strong>
                 <span>{liveImport.message ?? `TheSportsDB · 已接入 ${liveTeams.length} 支`}</span>
               </div>
               <button className="panel-action-button live-import-button" type="button" onClick={importLiveTeams} disabled={liveImport.loading}>
