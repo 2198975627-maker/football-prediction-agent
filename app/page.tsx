@@ -1180,6 +1180,55 @@ function unique(values: string[]) {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, "zh-CN"));
 }
 
+const countryDisplayAliases: Record<string, string> = {
+  argentina: "阿根廷",
+  australia: "澳大利亚",
+  belgium: "比利时",
+  brazil: "巴西",
+  china: "中国",
+  colombia: "哥伦比亚",
+  croatia: "克罗地亚",
+  england: "英格兰",
+  france: "法国",
+  germany: "德国",
+  iran: "伊朗",
+  italy: "意大利",
+  japan: "日本",
+  mexico: "墨西哥",
+  morocco: "摩洛哥",
+  netherlands: "荷兰",
+  portugal: "葡萄牙",
+  "saudi arabia": "沙特阿拉伯",
+  scotland: "苏格兰",
+  senegal: "塞内加尔",
+  "south korea": "韩国",
+  spain: "西班牙",
+  "the netherlands": "荷兰",
+  "united states": "美国",
+  uruguay: "乌拉圭"
+};
+
+const leagueDisplayAliases: Record<string, string> = {
+  "chinese super league": "中超",
+  "dutch eredivisie": "荷甲",
+  "english premier league": "英超",
+  "french ligue 1": "法甲",
+  "german bundesliga": "德甲",
+  "italian serie a": "意甲",
+  "major league soccer": "MLS",
+  "portuguese primeira liga": "葡超",
+  "saudi pro league": "沙特联",
+  "spanish la liga": "西甲"
+};
+
+function localizeTeamMetadata(team: TeamProfile): TeamProfile {
+  return {
+    ...team,
+    country: countryDisplayAliases[normalizeCountryName(team.country)] ?? team.country,
+    league: leagueDisplayAliases[team.league.trim().toLowerCase()] ?? team.league
+  };
+}
+
 function getHomeLabel(form: FormState) {
   if (form.homeTeam === "team_a") return `${form.teamA || "球队 A"} 主场`;
   if (form.homeTeam === "team_b") return `${form.teamB || "球队 B"} 主场`;
@@ -1190,12 +1239,18 @@ function teamKey(team: TeamProfile) {
   return `${team.name.toLowerCase()}::${team.kind}`;
 }
 
+function isSeniorTeamProfile(team: TeamProfile) {
+  const label = `${team.name} ${team.league}`.toLowerCase();
+  return !/\b(?:u[- ]?(?:15|16|17|18|19|20|21|22|23)|under[- ]?(?:15|16|17|18|19|20|21|22|23)|youth|reserve)\b/.test(label);
+}
+
 function mergeTeamCatalogs(liveTeams: TeamProfile[]) {
   const map = new Map<string, TeamProfile>();
-  [...liveTeams, ...baseTeamCatalog].forEach((team) => {
-    const key = teamKey(team);
+  [...liveTeams, ...baseTeamCatalog].filter(isSeniorTeamProfile).forEach((team) => {
+    const localizedTeam = localizeTeamMetadata(team);
+    const key = teamKey(localizedTeam);
     if (!map.has(key)) {
-      map.set(key, team);
+      map.set(key, localizedTeam);
     }
   });
   return Array.from(map.values());

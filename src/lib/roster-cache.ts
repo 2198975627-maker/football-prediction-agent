@@ -75,12 +75,18 @@ function supabaseHeaders(key: string) {
   };
 }
 
+function rosterCacheReadTimeoutMs() {
+  const configured = Number(readText("SUPABASE_ROSTER_CACHE_READ_TIMEOUT_MS", "6000"));
+  return Number.isFinite(configured) ? Math.min(Math.max(configured, 1000), 30_000) : 6000;
+}
+
 async function readSupabaseItem(config: SupabaseConfig, cacheKey: string) {
   const url = `${config.url}/rest/v1/${encodeURIComponent(config.table)}?cache_key=eq.${encodeURIComponent(cacheKey)}&select=payload,updated_at&limit=1`;
   const response = await fetch(url, {
     method: "GET",
     cache: "no-store",
-    headers: supabaseHeaders(config.readKey)
+    headers: supabaseHeaders(config.readKey),
+    signal: AbortSignal.timeout(rosterCacheReadTimeoutMs())
   });
 
   if (!response.ok) {

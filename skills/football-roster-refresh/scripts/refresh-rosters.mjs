@@ -448,8 +448,15 @@ function isNationalTeamRecord(team) {
   return name === country || DEFAULT_NATIONAL_TEAMS.some((teamName) => teamName.toLowerCase() === name) || inferKind(name, country, league) === "national";
 }
 
+function isSeniorTeamRecord(team) {
+  const label = `${toText(team.strTeam, 100)} ${toText(team.strLeague, 100)}`.toLowerCase();
+  return !/\b(?:u[- ]?(?:15|16|17|18|19|20|21|22|23)|under[- ]?(?:15|16|17|18|19|20|21|22|23)|youth|reserve)\b/.test(label);
+}
+
 function balancedTeams(teams, maxTeams) {
-  const unique = uniqueTeams(teams).filter((team) => team.strSport === "Soccer" || !team.strSport);
+  const unique = uniqueTeams(teams).filter(
+    (team) => (team.strSport === "Soccer" || !team.strSport) && isSeniorTeamRecord(team)
+  );
   const nationalTeams = unique.filter(isNationalTeamRecord);
   const clubTeams = unique.filter((team) => !isNationalTeamRecord(team));
   const nationalTarget =

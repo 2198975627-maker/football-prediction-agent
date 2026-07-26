@@ -54,3 +54,22 @@ test("production roster refresh remains cloud-only", async () => {
   assert.match(cache, /if \(isProduction\) \{\s+throw error;/);
   assert.doesNotMatch(packageJson, /roster:refresh/);
 });
+
+test("Supabase roster cache reads have a bounded timeout", async () => {
+  const cache = await source("src/lib/roster-cache.ts");
+
+  assert.match(cache, /SUPABASE_ROSTER_CACHE_READ_TIMEOUT_MS/);
+  assert.match(cache, /AbortSignal\.timeout\(rosterCacheReadTimeoutMs\(\)\)/);
+});
+
+test("roster UI localizes provider filters and refresh excludes youth teams", async () => {
+  const page = await source("app/page.tsx");
+  const refresh = await source("skills/football-roster-refresh/scripts/refresh-rosters.mjs");
+
+  assert.match(page, /countryDisplayAliases/);
+  assert.match(page, /leagueDisplayAliases/);
+  assert.match(page, /localizeTeamMetadata\(team\)/);
+  assert.match(page, /filter\(isSeniorTeamProfile\)/);
+  assert.match(refresh, /function isSeniorTeamRecord/);
+  assert.match(refresh, /isSeniorTeamRecord\(team\)/);
+});
