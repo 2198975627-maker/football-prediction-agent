@@ -31,6 +31,8 @@ ROSTER_REFRESH_MAX_PLAYERS_PER_TEAM=40
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` server-side only.
 
+`SUPABASE_SERVICE_ROLE_KEY` is the compatibility name used by the application. In production it may contain a modern Supabase `sb_secret_...` server key; a legacy JWT `service_role` key is not required.
+
 ## Vercel Cron
 
 `vercel.json` calls:
@@ -55,3 +57,11 @@ That is `00:00` Beijing time.
 - The browser never sees Supabase service keys.
 - No Windows Task Scheduler or Codex desktop automation is used.
 - The refresh job does not call an AI model, so it does not spend OpenAI tokens.
+
+## Current Production
+
+- Website: `https://football-prediction-agent.vercel.app`
+- Health: `https://football-prediction-agent.vercel.app/api/health`
+- Cache API: `https://football-prediction-agent.vercel.app/api/roster-cache`
+- Verified storage: Supabase
+- Verified scheduled route: `GET /api/cron/refresh-rosters`

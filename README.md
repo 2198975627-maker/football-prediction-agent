@@ -1,8 +1,28 @@
 # Football Prediction Agent
 
-Security-first planning kit for a football pre-match intelligence and prediction web API agent.
+Security-first football pre-match intelligence and prediction web API agent.
 
-This folder intentionally contains only specifications, registries, and safe templates. It does not contain real API keys, payment secrets, or live billing code.
+## Public Preview
+
+Production URL:
+
+```text
+https://football-prediction-agent.vercel.app
+```
+
+The public preview currently provides team selection, roster and player views, source-readiness checks, historical event samples, visual analysis panels, and safe mock prediction output. Select the two teams in the web interface and review the available evidence before starting an analysis.
+
+Current operating mode:
+
+- Prediction provider: `mock`
+- Paid model calls: disabled
+- Live charging: disabled
+- Cloud roster cache: Supabase
+- Cloud scheduler: Vercel Cron
+- Refresh schedule: every day at `00:00` Beijing time
+- Local computer required after deployment: no
+
+The repository does not contain real API keys or payment secrets. Production secrets are stored only in Vercel environment variables.
 
 ## Product Shape
 
@@ -85,7 +105,7 @@ Available API routes:
 
 ## Deployment
 
-The project is prepared for a safe preview deployment. Keep `PROVIDER_MODE=mock` and `LIVE_COSTS_ENABLED=false` until real AI calls, payment authorization, webhook verification, and cost settlement are implemented.
+The project is deployed as a safe public preview. Keep `PROVIDER_MODE=mock` and `LIVE_COSTS_ENABLED=false` until real AI calls, payment authorization, webhook verification, and cost settlement are implemented.
 
 Start with `docs/deployment.md` for Vercel and Docker steps.
 
@@ -95,10 +115,10 @@ Before sharing a public URL, run:
 pnpm run deploy:check
 ```
 
-After deployment, open:
+Production health endpoint:
 
 ```text
-https://your-domain/api/health
+https://football-prediction-agent.vercel.app/api/health
 ```
 
 Confirm `providerMode` is `mock`, `liveCostsEnabled` is `false`, and no unexpected production warnings appear.

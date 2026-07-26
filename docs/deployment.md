@@ -8,6 +8,12 @@ For a mainland-first product, follow `docs/mainland-production.md`. Use a mainla
 
 ## Optional overseas deployment: Vercel
 
+Current public preview:
+
+```text
+https://football-prediction-agent.vercel.app
+```
+
 1. Push this folder to a GitHub repository.
 2. Import the repository in Vercel as a Next.js project.
 3. Use these commands:
@@ -24,6 +30,8 @@ For a mainland-first product, follow `docs/mainland-production.md`. Use a mainla
    - `providerMode` is `mock`
    - `liveCostsEnabled` is `false`
    - `productionWarnings` is empty or only warns about the TheSportsDB demo key.
+
+The current production deployment uses Supabase for the cloud roster cache and Vercel Cron for the daily refresh. The refresh runs at `0 16 * * *` UTC, which is `00:00` Beijing time. It does not use the local computer and does not call an AI model.
 
 ## Docker deployment
 
@@ -59,6 +67,6 @@ Then open `http://localhost:3000`.
 - Complete Stripe business verification, configure secrets, and verify a real low-value webhook flow.
 - Configure at least two structured match providers before enabling paid official predictions.
 - Create Upstash Redis for production-wide rate limiting.
-- Import the project into Vercel, add a domain, set production environment variables, and verify both cron routes.
+- Add a custom domain if required; the default Vercel production domain is already active.
 
 Follow `docs/production-launch.md` before setting `PROVIDER_MODE=live` or `LIVE_COSTS_ENABLED=true`.
