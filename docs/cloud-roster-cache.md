@@ -58,6 +58,16 @@ That is `00:00` Beijing time.
 - No Windows Task Scheduler or Codex desktop automation is used.
 - The refresh job does not call an AI model, so it does not spend OpenAI tokens.
 
+### Free provider limits
+
+The public TheSportsDB demo key is limited to 30 requests per minute. The cloud refresh therefore uses a fixed request budget:
+
+- League and popular-team metadata are refreshed first.
+- Missing popular clubs are recovered by name while the request budget allows.
+- Club badges and national flags are preferred for the public preview.
+- Real provider rosters are not claimed in public-demo mode; placeholder players remain clearly marked.
+- A private provider key enables a limited player-roster lookup budget, but complete event metrics still require a licensed statistics provider.
+
 ## Current Production
 
 - Website: `https://football-prediction-agent.vercel.app`

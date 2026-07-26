@@ -346,6 +346,24 @@ function initials(name) {
   return text.toUpperCase();
 }
 
+function normalizedTeamName(value) {
+  return toText(value, 100)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function teamRecordScore(team) {
+  return [
+    team.idTeam && !String(team.idTeam).startsWith("fallback-") ? 8 : 0,
+    team.strBadge ? 6 : 0,
+    team.strLogo ? 3 : 0,
+    team.strFanart1 ? 2 : 0,
+    team.strStadium ? 1 : 0
+  ].reduce((total, value) => total + value, 0);
+}
+
 function normalizePlayer(player, index, maxPlayersPerTeam) {
   const role = toText(player.strPosition, 60) || "Player";
   return {
@@ -465,12 +483,42 @@ function fallbackTeams(maxTeams) {
   return balancedTeams([...clubTeams, ...nationalTeams], maxTeams);
 }
 
+function prioritizedTeams(providerTeams, maxTeams) {
+  const providerByName = new Map();
+  providerTeams.forEach((team) => {
+    const key = normalizedTeamName(team.strTeam);
+    if (!key) return;
+    const current = providerByName.get(key);
+    if (!current || teamRecordScore(team) > teamRecordScore(current)) {
+      providerByName.set(key, team);
+    }
+  });
+
+  const preferred = fallbackTeams(maxTeams).map((team) => providerByName.get(normalizedTeamName(team.strTeam)) ?? team);
+  const preferredNames = new Set(preferred.map((team) => normalizedTeamName(team.strTeam)));
+  const remaining = providerTeams.filter((team) => !preferredNames.has(normalizedTeamName(team.strTeam)));
+  return balancedTeams([...preferred, ...remaining], maxTeams);
+}
+
 async function fetchTeams(apiKey, maxTeams) {
+  const isPublicDemo = apiKey === PUBLIC_THESPORTSDB_DEMO_KEY;
   const leagueUrls = DEFAULT_LEAGUES.map((league) => makeUrl(apiKey, "search_all_teams.php", { l: league }));
-  const nationalUrls = DEFAULT_NATIONAL_TEAMS.map((team) => makeUrl(apiKey, "searchteams.php", { t: team }));
-  const settled = await Promise.allSettled([...leagueUrls, ...nationalUrls].map((url) => fetchJson(url)));
-  const rawTeams = settled.flatMap((result) => (result.status === "fulfilled" ? result.value.teams ?? [] : []));
-  const teams = balancedTeams(rawTeams, maxTeams);
+  const nationalUrls = isPublicDemo
+    ? []
+    : DEFAULT_NATIONAL_TEAMS.map((team) => makeUrl(apiKey, "searchteams.php", { t: team }));
+  const initialSettled = await Promise.allSettled([...leagueUrls, ...nationalUrls].map((url) => fetchJson(url)));
+  const initialTeams = initialSettled.flatMap((result) => (result.status === "fulfilled" ? result.value.teams ?? [] : []));
+  const initialNames = new Set(initialTeams.map((team) => normalizedTeamName(team.strTeam)));
+  const missingPopularClubs = FALLBACK_CLUB_GROUPS.flatMap((group) => group.teams).filter(
+    (team) => !initialNames.has(normalizedTeamName(team))
+  );
+  const publicSearchBudget = Math.max(0, 28 - leagueUrls.length);
+  const popularClubSearches = isPublicDemo ? missingPopularClubs.slice(0, publicSearchBudget) : missingPopularClubs;
+  const missingSettled = await Promise.allSettled(
+    popularClubSearches.map((team) => fetchJson(makeUrl(apiKey, "searchteams.php", { t: team })))
+  );
+  const recoveredTeams = missingSettled.flatMap((result) => (result.status === "fulfilled" ? result.value.teams ?? [] : []));
+  const teams = prioritizedTeams([...initialTeams, ...recoveredTeams], maxTeams);
 
   if (teams.length) {
     return teams;
@@ -613,9 +661,10 @@ async function main() {
   console.log("[roster-refresh] storage cloud-only");
 
   const rawTeams = await fetchTeams(apiKey, args.maxTeams);
+  const playerLookupLimit = apiKeyMode === "public-demo" ? 0 : Math.min(40, rawTeams.length);
   const teams = await mapConcurrent(rawTeams, args.concurrency, async (team, index) => {
     try {
-      const players = await fetchPlayers(apiKey, team, args.maxPlayersPerTeam);
+      const players = index < playerLookupLimit ? await fetchPlayers(apiKey, team, args.maxPlayersPerTeam) : [];
       return normalizeTeam(team, players);
     } catch (error) {
       console.warn(`[roster-refresh] player fetch failed for ${team.strTeam ?? team.idTeam}: ${error instanceof Error ? error.message : error}`);
@@ -650,13 +699,32 @@ async function main() {
   };
 
   if (args.dryRun) {
-    console.log(JSON.stringify({ snapshot: snapshot.totals, changes: changes.totals }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          snapshot: snapshot.totals,
+          coverage: {
+            badges: snapshot.teams.filter((team) => Boolean(team.badgeUrl)).length,
+            providerRosters: snapshot.teams.filter((team) => team.rosterStatus === "provider").length,
+            featuredTeams: ["Manchester City", "Real Madrid"].map((name) => {
+              const team = snapshot.teams.find((item) => normalizedTeamName(item.name) === normalizedTeamName(name));
+              return { name, present: Boolean(team), badge: Boolean(team?.badgeUrl) };
+            })
+          },
+          changes: changes.totals
+        },
+        null,
+        2
+      )
+    );
     return;
   }
 
   await writeCloudCache(snapshot, changes, true);
 
   console.log(`[roster-refresh] teams=${snapshot.totals.teams} players=${snapshot.totals.players}`);
+  console.log(`[roster-refresh] badges=${snapshot.teams.filter((team) => Boolean(team.badgeUrl)).length}`);
+  console.log(`[roster-refresh] provider-rosters=${snapshot.teams.filter((team) => team.rosterStatus === "provider").length}`);
   console.log(`[roster-refresh] roster-change-teams=${changes.totals.teamsWithRosterChanges}`);
   console.log(`[roster-refresh] done ${snapshot.generatedAt}`);
 }
