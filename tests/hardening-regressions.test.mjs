@@ -73,3 +73,18 @@ test("roster UI localizes provider filters and refresh excludes youth teams", as
   assert.match(refresh, /function isSeniorTeamRecord/);
   assert.match(refresh, /isSeniorTeamRecord\(team\)/);
 });
+
+test("club badge fallbacks and canonical names prevent initials and duplicate teams", async () => {
+  const page = await source("app/page.tsx");
+  const refresh = await source("skills/football-roster-refresh/scripts/refresh-rosters.mjs");
+
+  assert.match(page, /function canonicalTeamName/);
+  assert.match(page, /\.normalize\("NFKD"\)/);
+  assert.match(page, /const curatedClubBadgeUrls/);
+  assert.match(page, /asroma: "https:\/\/r2\.thesportsdb\.com/);
+  assert.match(page, /losangelesfc: "https:\/\/r2\.thesportsdb\.com/);
+  assert.match(page, /curatedClubBadgeUrls\[canonicalTeamName\(team\.name\)\]/);
+  assert.match(page, /return `\$\{canonicalTeamName\(team\.name\)\}::\$\{team\.kind\}`/);
+  assert.match(refresh, /"Japanese J1 League"/);
+  assert.match(refresh, /roma: "asroma"/);
+});

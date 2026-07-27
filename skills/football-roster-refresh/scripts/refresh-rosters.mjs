@@ -15,10 +15,10 @@ const DEFAULT_LEAGUES = [
   "Portuguese Primeira Liga",
   "Dutch Eredivisie",
   "Chinese Super League",
-  "J1 League",
-  "K League 1",
-  "Saudi Pro League",
-  "Major League Soccer"
+  "Japanese J1 League",
+  "South Korean K League 1",
+  "Saudi-Arabian Pro League",
+  "American Major League Soccer"
 ];
 
 const DEFAULT_NATIONAL_TEAMS = [
@@ -347,11 +347,32 @@ function initials(name) {
 }
 
 function normalizedTeamName(value) {
-  return toText(value, 100)
+  const normalized = toText(value, 100)
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
+
+  const aliases = {
+    asmonaco: "monaco",
+    asromafc: "asroma",
+    intermiamicf: "intermiami",
+    jeonbukhyundai: "jeonbukhyundaimotors",
+    jeonbukhyundaimotorsfc: "jeonbukhyundaimotors",
+    lafc: "losangelesfc",
+    lilleosc: "lille",
+    losangelesfootballclub: "losangelesfc",
+    olympiquedemarseille: "marseille",
+    olympiquelyonnais: "lyon",
+    parissaintgermainfc: "parissaintgermain",
+    psv: "psveindhoven",
+    roma: "asroma",
+    sportinglisbon: "sportingcp",
+    ulsanhyundai: "ulsanhd",
+    ulsanhyundaifc: "ulsanhd"
+  };
+
+  return aliases[normalized] ?? normalized;
 }
 
 function teamRecordScore(team) {

@@ -202,9 +202,10 @@ type LiveTeamResponse = {
 };
 
 function describeTeamImport(data: LiveTeamResponse, teams: TeamProfile[]) {
-  const clubs = teams.filter((team) => team.kind === "club");
+  const displayTeams = teams.map(localizeTeamMetadata);
+  const clubs = displayTeams.filter((team) => team.kind === "club");
   const clubBadges = clubs.filter((team) => Boolean(team.badgeUrl)).length;
-  const providerRosters = teams.filter((team) => team.rosterStatus === "provider").length;
+  const providerRosters = displayTeams.filter((team) => team.rosterStatus === "provider").length;
   const source =
     data.storage === "supabase"
       ? "云端缓存"
@@ -1209,21 +1210,111 @@ const countryDisplayAliases: Record<string, string> = {
 };
 
 const leagueDisplayAliases: Record<string, string> = {
+  "american major league soccer": "MLS",
   "chinese super league": "中超",
   "dutch eredivisie": "荷甲",
   "english premier league": "英超",
   "french ligue 1": "法甲",
   "german bundesliga": "德甲",
   "italian serie a": "意甲",
+  "japanese j1 league": "J1 League",
   "major league soccer": "MLS",
   "portuguese primeira liga": "葡超",
+  "saudi-arabian pro league": "沙特联",
   "saudi pro league": "沙特联",
+  "south korean k league 1": "K League 1",
   "spanish la liga": "西甲"
+};
+
+const canonicalTeamNameAliases: Record<string, string> = {
+  asmonaco: "monaco",
+  asromafc: "asroma",
+  intermiamicf: "intermiami",
+  jeonbukhyundai: "jeonbukhyundaimotors",
+  jeonbukhyundaimotorsfc: "jeonbukhyundaimotors",
+  lafc: "losangelesfc",
+  lilleosc: "lille",
+  losangelesfootballclub: "losangelesfc",
+  olympiquedemarseille: "marseille",
+  olympiquelyonnais: "lyon",
+  parissaintgermainfc: "parissaintgermain",
+  psv: "psveindhoven",
+  roma: "asroma",
+  sportinglisbon: "sportingcp",
+  ulsanhyundai: "ulsanhd",
+  ulsanhyundaifc: "ulsanhd"
+};
+
+function canonicalTeamName(name: string) {
+  const normalized = name
+    .trim()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+
+  return canonicalTeamNameAliases[normalized] ?? normalized;
+}
+
+// Stable artwork fallbacks keep club cards usable when a provider omits a badge.
+const curatedClubBadgeUrls: Record<string, string> = {
+  acmilan: "https://r2.thesportsdb.com/images/media/team/badge/wvspur1448806617.png",
+  ajax: "https://r2.thesportsdb.com/images/media/team/badge/zg9tii1755495289.png",
+  alhilal: "https://r2.thesportsdb.com/images/media/team/badge/w0b80d1661656916.png",
+  alnassr: "https://r2.thesportsdb.com/images/media/team/badge/84yvqi1748524565.png",
+  arsenal: "https://r2.thesportsdb.com/images/media/team/badge/uyhbfe1612467038.png",
+  asroma: "https://r2.thesportsdb.com/images/media/team/badge/jwro2s1760820674.png",
+  astonvilla: "https://www.thesportsdb.com/images/media/team/badge/97mehy1784645865.png",
+  atleticomadrid: "https://r2.thesportsdb.com/images/media/team/badge/0ulh3q1719984315.png",
+  barcelona: "https://r2.thesportsdb.com/images/media/team/badge/wq9sir1639406443.png",
+  bayerleverkusen: "https://r2.thesportsdb.com/images/media/team/badge/3x9k851726760113.png",
+  bayernmunich: "https://r2.thesportsdb.com/images/media/team/badge/01ogkh1716960412.png",
+  beijingguoan: "https://r2.thesportsdb.com/images/media/team/badge/cdkguq1652626854.png",
+  benfica: "https://r2.thesportsdb.com/images/media/team/badge/hj4kyc1781152436.png",
+  borussiadortmund: "https://r2.thesportsdb.com/images/media/team/badge/tqo8ge1716960353.png",
+  chelsea: "https://www.thesportsdb.com/images/media/team/badge/pbf4ul1782638263.png",
+  eintrachtfrankfurt: "https://r2.thesportsdb.com/images/media/team/badge/rurwpy1473453269.png",
+  feyenoord: "https://r2.thesportsdb.com/images/media/team/badge/uturtx1473534803.png",
+  intermiami: "https://r2.thesportsdb.com/images/media/team/badge/m4it3e1602103647.png",
+  intermilan: "https://r2.thesportsdb.com/images/media/team/badge/ryhu6d1617113103.png",
+  jeonbukhyundaimotors: "https://r2.thesportsdb.com/images/media/team/badge/8jif3b1747853225.png",
+  juventus: "https://r2.thesportsdb.com/images/media/team/badge/uxf0gr1742983727.png",
+  lagalaxy: "https://r2.thesportsdb.com/images/media/team/badge/ysyysr1420227188.png",
+  lille: "https://r2.thesportsdb.com/images/media/team/badge/2giize1534005340.png",
+  liverpool: "https://r2.thesportsdb.com/images/media/team/badge/kfaher1737969724.png",
+  losangelesfc: "https://r2.thesportsdb.com/images/media/team/badge/7nbj2a1602103638.png",
+  lyon: "https://r2.thesportsdb.com/images/media/team/badge/blk9771656932845.png",
+  manchestercity: "https://r2.thesportsdb.com/images/media/team/badge/vwpvry1467462651.png",
+  manchesterunited: "https://r2.thesportsdb.com/images/media/team/badge/xzqdr11517660252.png",
+  marseille: "https://r2.thesportsdb.com/images/media/team/badge/c6bazh1779212287.png",
+  monaco: "https://r2.thesportsdb.com/images/media/team/badge/exjf5l1678808044.png",
+  napoli: "https://r2.thesportsdb.com/images/media/team/badge/l8qyxv1742982541.png",
+  newcastleunited: "https://r2.thesportsdb.com/images/media/team/badge/lhwuiz1621593302.png",
+  parissaintgermain: "https://r2.thesportsdb.com/images/media/team/badge/rwqrrq1473504808.png",
+  porto: "https://r2.thesportsdb.com/images/media/team/badge/xu47rb1628855600.png",
+  psveindhoven: "https://r2.thesportsdb.com/images/media/team/badge/xfsz6i1721297428.png",
+  rbleipzig: "https://r2.thesportsdb.com/images/media/team/badge/zjgapo1594244951.png",
+  realmadrid: "https://r2.thesportsdb.com/images/media/team/badge/vwvwrw1473502969.png",
+  realsociedad: "https://r2.thesportsdb.com/images/media/team/badge/vptvpr1473502986.png",
+  sevilla: "https://r2.thesportsdb.com/images/media/team/badge/vpsqqx1473502977.png",
+  shandongtaishan: "https://r2.thesportsdb.com/images/media/team/badge/vheyu21654266995.png",
+  shanghaiport: "https://r2.thesportsdb.com/images/media/team/badge/d9evs91776534441.png",
+  shanghaishenhua: "https://r2.thesportsdb.com/images/media/team/badge/p0r1bj1654266974.png",
+  sportingcp: "https://www.thesportsdb.com/images/media/team/badge/5hiuk71783137875.png",
+  tottenhamhotspur: "https://r2.thesportsdb.com/images/media/team/badge/dfyfhl1604094109.png",
+  ulsanhd: "https://r2.thesportsdb.com/images/media/team/badge/0wooic1706533767.png",
+  urawareddiamonds: "https://r2.thesportsdb.com/images/media/team/badge/ce3lhk1578239741.png",
+  villarreal: "https://r2.thesportsdb.com/images/media/team/badge/vrypqy1473503073.png",
+  visselkobe: "https://r2.thesportsdb.com/images/media/team/badge/2axjch1578239819.png",
+  yokohamafmarinos: "https://r2.thesportsdb.com/images/media/team/badge/rgeshm1578240000.png"
 };
 
 function localizeTeamMetadata(team: TeamProfile): TeamProfile {
   return {
     ...team,
+    badgeUrl:
+      team.badgeUrl ||
+      (team.kind === "club" ? curatedClubBadgeUrls[canonicalTeamName(team.name)] : undefined),
     country: countryDisplayAliases[normalizeCountryName(team.country)] ?? team.country,
     league: leagueDisplayAliases[team.league.trim().toLowerCase()] ?? team.league
   };
@@ -1236,7 +1327,7 @@ function getHomeLabel(form: FormState) {
 }
 
 function teamKey(team: TeamProfile) {
-  return `${team.name.toLowerCase()}::${team.kind}`;
+  return `${canonicalTeamName(team.name)}::${team.kind}`;
 }
 
 function isSeniorTeamProfile(team: TeamProfile) {
@@ -1265,7 +1356,8 @@ function mergeLiveTeams(current: TeamProfile[], incoming: TeamProfile[]) {
 }
 
 function findTeam(name: string, teams: TeamProfile[] = baseTeamCatalog) {
-  return teams.find((team) => team.name.toLowerCase() === name.trim().toLowerCase());
+  const key = canonicalTeamName(name);
+  return teams.find((team) => canonicalTeamName(team.name) === key);
 }
 
 function fallbackTeam(name: string, slot: TeamSlot): TeamProfile {
