@@ -30,7 +30,9 @@ alter table public.football_payment_orders add column if not exists refund_compl
 
 create index if not exists football_payment_orders_user_idx on public.football_payment_orders(user_id, created_at desc);
 alter table public.football_payment_orders enable row level security;
+drop policy if exists "Users read own football orders" on public.football_payment_orders;
 create policy "Users read own football orders" on public.football_payment_orders for select to authenticated using (auth.uid() = user_id);
+drop policy if exists "Service manages football orders" on public.football_payment_orders;
 create policy "Service manages football orders" on public.football_payment_orders for all to service_role using (true) with check (true);
 
 create table if not exists public.football_webhook_events (
@@ -39,6 +41,7 @@ create table if not exists public.football_webhook_events (
   received_at timestamptz not null default now()
 );
 alter table public.football_webhook_events enable row level security;
+drop policy if exists "Service manages football webhook events" on public.football_webhook_events;
 create policy "Service manages football webhook events" on public.football_webhook_events for all to service_role using (true) with check (true);
 
 create table if not exists public.football_ledger (
@@ -57,7 +60,9 @@ create unique index if not exists football_ledger_stripe_event_idx
   on public.football_ledger(stripe_event_id)
   where stripe_event_id is not null;
 alter table public.football_ledger enable row level security;
+drop policy if exists "Users read own football ledger" on public.football_ledger;
 create policy "Users read own football ledger" on public.football_ledger for select to authenticated using (auth.uid() = user_id);
+drop policy if exists "Service inserts football ledger" on public.football_ledger;
 create policy "Service inserts football ledger" on public.football_ledger for insert to service_role with check (true);
 
 create or replace function public.prevent_football_ledger_mutation() returns trigger language plpgsql as $$
@@ -257,7 +262,9 @@ create table if not exists public.football_prediction_jobs (
 );
 create index if not exists football_prediction_jobs_user_idx on public.football_prediction_jobs(user_id, created_at desc);
 alter table public.football_prediction_jobs enable row level security;
+drop policy if exists "Users read own prediction jobs" on public.football_prediction_jobs;
 create policy "Users read own prediction jobs" on public.football_prediction_jobs for select to authenticated using (auth.uid() = user_id);
+drop policy if exists "Service manages prediction jobs" on public.football_prediction_jobs;
 create policy "Service manages prediction jobs" on public.football_prediction_jobs for all to service_role using (true) with check (true);
 
 grant select on public.football_payment_orders, public.football_ledger, public.football_prediction_jobs to authenticated;
