@@ -1490,6 +1490,47 @@ button {
   white-space: nowrap;
 }
 
+.team-roster-coach {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fbfa;
+}
+
+.team-roster-coach > img,
+.team-roster-coach > svg {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  color: var(--green);
+  background: #e9f4ef;
+}
+
+.team-roster-coach > span {
+  min-width: 0;
+}
+
+.team-roster-coach strong,
+.team-roster-coach small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.team-roster-coach strong {
+  color: #233139;
+  font-size: 12px;
+}
+
+.team-roster-coach small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .team-roster-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

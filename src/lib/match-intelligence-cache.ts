@@ -1,4 +1,5 @@
 import type { LiveMatchIntelligence } from "./providers/sportmonks";
+import { getSupabaseSettings, supabaseRestHeaders } from "./supabase-config";
 
 type CacheInput = {
   teamA: string;
@@ -40,25 +41,15 @@ function env(name: string, fallback = "") {
 }
 
 function supabaseConfig(): SupabaseConfig | null {
-  const url = env("SUPABASE_URL").replace(/\/+$/, "");
-  const serviceRoleKey = env("SUPABASE_SERVICE_ROLE_KEY");
-  const anonKey = env("SUPABASE_ANON_KEY");
-  if (!url || (!serviceRoleKey && !anonKey)) return null;
+  const { url, secretKey, publishableKey } = getSupabaseSettings();
+  if (!url || (!secretKey && !publishableKey)) return null;
 
   return {
     url,
-    readKey: serviceRoleKey || anonKey,
-    writeKey: serviceRoleKey || null,
+    readKey: secretKey || publishableKey,
+    writeKey: secretKey || null,
     cacheTable: env("SUPABASE_MATCH_CACHE_TABLE", "football_match_intelligence_cache"),
     entityTable: env("SUPABASE_PROVIDER_ENTITY_TABLE", "football_provider_entities")
-  };
-}
-
-function headers(key: string) {
-  return {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json"
   };
 }
 
@@ -106,7 +97,7 @@ export async function readMatchIntelligenceCache(cacheKey: string, maxAgeMs: num
   const url = `${config.url}/rest/v1/${encodeURIComponent(config.cacheTable)}?cache_key=eq.${encodeURIComponent(cacheKey)}&select=payload,updated_at&limit=1`;
   try {
     const response = await fetch(url, {
-      headers: headers(config.readKey),
+      headers: supabaseRestHeaders(config.readKey),
       cache: "no-store",
       signal: AbortSignal.timeout(5000)
     });
@@ -134,7 +125,7 @@ export async function writeMatchIntelligenceCache(cacheKeys: string[], data: Liv
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        ...headers(config.writeKey),
+        ...supabaseRestHeaders(config.writeKey),
         Prefer: "resolution=merge-duplicates,return=minimal"
       },
       body: JSON.stringify(uniqueKeys.map((cacheKey) => ({ cache_key: cacheKey, payload: data, updated_at: updatedAt }))),
@@ -187,7 +178,7 @@ export async function persistProviderEntityMappings(data: LiveMatchIntelligence)
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        ...headers(config.writeKey),
+        ...supabaseRestHeaders(config.writeKey),
         Prefer: "resolution=merge-duplicates,return=minimal"
       },
       body: JSON.stringify(entityRows(data).map((row) => ({ ...row, updated_at: new Date().toISOString() }))),

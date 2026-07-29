@@ -59,7 +59,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Cloud roster cache is not writable. Configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before enabling deployment cron."
+        error: "Cloud roster cache is not writable. Configure SUPABASE_URL and SUPABASE_SECRET_KEY before enabling deployment cron."
       },
       { status: 500 }
     );

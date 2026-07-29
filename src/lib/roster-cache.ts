@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { getSupabaseSettings, supabaseRestHeaders } from "./supabase-config";
 
 export type RosterSnapshot = {
   schemaVersion?: number;
@@ -43,18 +44,16 @@ function readText(name: string, fallback = "") {
 }
 
 function getSupabaseConfig(): SupabaseConfig | null {
-  const url = readText("SUPABASE_URL").replace(/\/+$/, "");
-  const serviceRoleKey = readText("SUPABASE_SERVICE_ROLE_KEY");
-  const anonKey = readText("SUPABASE_ANON_KEY");
+  const { url, secretKey, publishableKey } = getSupabaseSettings();
   const table = readText("SUPABASE_ROSTER_CACHE_TABLE", "football_roster_cache");
 
-  if (!url || (!serviceRoleKey && !anonKey)) {
+  if (!url || (!secretKey && !publishableKey)) {
     return null;
   }
 
   return {
     url,
-    readKey: serviceRoleKey || anonKey,
+    readKey: secretKey || publishableKey,
     table
   };
 }
@@ -64,15 +63,8 @@ export function isSupabaseRosterCacheConfigured() {
 }
 
 export function isSupabaseRosterCacheWritable() {
-  return Boolean(readText("SUPABASE_URL") && readText("SUPABASE_SERVICE_ROLE_KEY"));
-}
-
-function supabaseHeaders(key: string) {
-  return {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json"
-  };
+  const { url, secretKey } = getSupabaseSettings();
+  return Boolean(url && secretKey);
 }
 
 function rosterCacheReadTimeoutMs() {
@@ -85,7 +77,7 @@ async function readSupabaseItem(config: SupabaseConfig, cacheKey: string) {
   const response = await fetch(url, {
     method: "GET",
     cache: "no-store",
-    headers: supabaseHeaders(config.readKey),
+    headers: supabaseRestHeaders(config.readKey),
     signal: AbortSignal.timeout(rosterCacheReadTimeoutMs())
   });
 

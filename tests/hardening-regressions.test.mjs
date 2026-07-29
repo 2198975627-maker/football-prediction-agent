@@ -30,7 +30,7 @@ test("refunds are recorded as pending before Stripe and finalized separately", a
 test("unverified frontend metrics do not create preview probabilities or matchup cards", async () => {
   const page = await source("app/page.tsx");
   assert.doesNotMatch(page, /function buildPreviewProbability/);
-  assert.match(page, /hasVerifiedTeamMetrics \? buildMatchupInsights/);
+  assert.match(page, /hasVerifiedTeamMetrics && hasVerifiedPlayerMetrics \? buildMatchupInsights/);
   assert.match(page, /暂无核验统计/);
 });
 

@@ -27,6 +27,10 @@ type SportsDbPlayer = {
   strPosition?: string;
   strThumb?: string;
   strCutout?: string;
+  strNumber?: string;
+  strHeight?: string;
+  dateBorn?: string;
+  strBirthDate?: string;
 };
 
 const BASE_URL = "https://www.thesportsdb.com/api/v1/json";
@@ -226,6 +230,34 @@ function score(seed: number, offset: number, min = 58, max = 90) {
   return min + ((seed + offset * 17) % (max - min + 1));
 }
 
+function optionalNumber(value: unknown) {
+  const parsed = Number(String(value ?? "").trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseHeightCm(value: unknown) {
+  const text = toText(value, 30).toLowerCase();
+  if (!text) return null;
+  const amount = Number(text.replace(",", ".").match(/\d+(?:\.\d+)?/)?.[0]);
+  if (!Number.isFinite(amount) || text.includes("ft") || text.includes("'")) return null;
+  const centimeters = text.includes("m") && !text.includes("cm") && amount < 3 ? amount * 100 : amount;
+  return centimeters >= 140 && centimeters <= 230 ? Math.round(centimeters) : null;
+}
+
+function ageFromBirthDate(value: unknown) {
+  const birthDate = new Date(toText(value, 30));
+  if (!Number.isFinite(birthDate.getTime())) return null;
+  const now = new Date();
+  let age = now.getUTCFullYear() - birthDate.getUTCFullYear();
+  if (
+    now.getUTCMonth() < birthDate.getUTCMonth()
+    || (now.getUTCMonth() === birthDate.getUTCMonth() && now.getUTCDate() < birthDate.getUTCDate())
+  ) {
+    age -= 1;
+  }
+  return age >= 14 && age <= 60 ? age : null;
+}
+
 function inferContinent(country: string) {
   if (europe.has(country)) return "欧洲";
   if (southAmerica.has(country)) return "南美洲";
@@ -262,20 +294,23 @@ function recent(seed: number) {
   return Array.from({ length: 5 }, (_, index) => values[(seed + index) % values.length]);
 }
 
-function normalizePlayer(player: SportsDbPlayer, teamSeed: number, index: number) {
+function normalizePlayer(player: SportsDbPlayer, _teamSeed: number, index: number) {
   const name = toText(player.strPlayer, 60) || `Player ${index + 1}`;
   const role = toText(player.strPosition, 40) || "Player";
-  const seed = hash(`${name}:${teamSeed}:${index}`);
+  const shirtNumber = optionalNumber(player.strNumber);
   return {
     name,
     role,
     status: "ready" as const,
-    form: score(seed, 1, 62, 88),
-    goals: role.toLowerCase().includes("wing") || role.toLowerCase().includes("forward") || role.toLowerCase().includes("striker") ? seed % 9 : seed % 3,
-    assists: role.toLowerCase().includes("mid") || role.toLowerCase().includes("wing") ? seed % 7 : seed % 3,
-    defense: role.toLowerCase().includes("back") || role.toLowerCase().includes("def") || role.toLowerCase().includes("goal") ? score(seed, 2, 70, 91) : score(seed, 2, 42, 74),
-    minutes: score(seed, 3, 55, 92),
+    form: 0,
+    goals: 0,
+    assists: 0,
+    defense: 0,
+    minutes: 0,
     avatarUrl: player.strCutout || player.strThumb || "",
+    age: ageFromBirthDate(player.dateBorn || player.strBirthDate),
+    shirtNumber: shirtNumber !== null && shirtNumber >= 0 && shirtNumber <= 99 ? Math.round(shirtNumber) : null,
+    heightCm: parseHeightCm(player.strHeight),
     metricsStatus: "placeholder" as const,
     rosterStatus: player.idPlayer ? ("provider" as const) : ("placeholder" as const),
     note: "TheSportsDB 球员名单；状态、进球、助攻等指标暂为可视化占位，需接入官方统计源后替换。"

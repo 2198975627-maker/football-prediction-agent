@@ -7,6 +7,7 @@ import { configuredMatchProviders } from "@/src/lib/providers/match-intelligence
 import { getPlayerEventProviderStatuses } from "@/src/lib/providers/player-events";
 import { getApiFootballAuthMode } from "@/src/lib/providers/api-football";
 import { getAiProviderStatus } from "@/src/lib/ai-provider";
+import { getSupabaseSettings } from "@/src/lib/supabase-config";
 
 export async function GET(request: Request) {
   const limited = await checkRateLimit(request, { keyPrefix: "health", limit: 120, windowMs: 60_000 });
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
   const authConfigured = isAuthConfigured();
   const paymentConfigured = isPaymentConfigured();
   const playerEventProviders = getPlayerEventProviderStatuses();
+  const supabase = getSupabaseSettings();
 
   return NextResponse.json({
     ok: true,
@@ -56,6 +58,11 @@ export async function GET(request: Request) {
         id: provider.id,
         status: provider.runtimeStatus
       }))
+    },
+    supabase: {
+      configured: Boolean(supabase.url && (supabase.publishableKey || supabase.secretKey)),
+      publishableKeyMode: supabase.publishableKeyMode,
+      secretKeyMode: supabase.secretKeyMode
     },
     readiness: { aiConfigured, aiProvider: ai.activeProvider, aiModel: ai.model, aiPricingConfigured: ai.pricingConfigured, authConfigured, paymentConfigured },
     productionWarningCount: config.productionWarnings.length,

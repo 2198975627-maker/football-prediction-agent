@@ -18,12 +18,19 @@ For deployed websites, create the Supabase table in `references/supabase-cache.s
 
 ```text
 SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_SECRET_KEY=
 SUPABASE_ROSTER_CACHE_TABLE=football_roster_cache
 CRON_SECRET=
 ROSTER_REFRESH_MAX_TEAMS=72
 ROSTER_REFRESH_MAX_PLAYERS_PER_TEAM=40
+ROSTER_API_FOOTBALL_TEAM_LIMIT=16
+API_FOOTBALL_KEY=
 ```
+
+`SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` remain compatibility aliases,
+but production should use modern `sb_publishable_...` and `sb_secret_...` keys.
+`RAPIDAPI_FOOTBALL_KEY` can replace `API_FOOTBALL_KEY`.
 
 Vercel Cron is configured in `vercel.json` to call `GET /api/cron/refresh-rosters` at `16:00 UTC`, which is `00:00` Beijing time.
 
@@ -40,5 +47,7 @@ roster snapshots to the deployed filesystem or the user's computer.
 - Never log API keys or authorization headers.
 - Never configure a local recurring refresh.
 - Use `THESPORTSDB_API_KEY` when configured; otherwise the script uses the public demo key.
+- When API-Football is configured, rotate a bounded set of teams through official
+  current-squad and coach endpoints and preserve previously verified rosters.
 - Treat public data as a cache, not as authoritative paid event data.
 - For paid providers, keep keys server-side and redact them in logs.

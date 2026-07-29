@@ -1,13 +1,22 @@
 const required = [
   "NEXT_PUBLIC_APP_URL",
   "SUPABASE_URL",
-  "SUPABASE_ANON_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
   "CRON_SECRET",
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN"
+];
+
+const requiredAlternatives = [
+  {
+    label: "SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY",
+    names: ["SUPABASE_PUBLISHABLE_KEY", "SUPABASE_ANON_KEY"]
+  },
+  {
+    label: "SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY",
+    names: ["SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"]
+  }
 ];
 
 const providers = [
@@ -16,8 +25,19 @@ const providers = [
   process.env.FOOTBALL_DATA_API_KEY?.trim() ? "football-data-org" : "",
   process.env.ANYSPORT_API_KEY?.trim() ? "anysport" : ""
 ].filter(Boolean);
-const missing = required.filter((name) => !process.env[name]?.trim());
+const missing = [
+  ...required.filter((name) => !process.env[name]?.trim()),
+  ...requiredAlternatives
+    .filter(({ names }) => !names.some((name) => process.env[name]?.trim()))
+    .map(({ label }) => label)
+];
 const issues = [];
+const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY?.trim() || process.env.SUPABASE_ANON_KEY?.trim() || "";
+const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+const isLegacyJwt = (value) => value.startsWith("eyJ") && value.split(".").length === 3;
+if (isLegacyJwt(supabasePublishableKey) || isLegacyJwt(supabaseSecretKey)) {
+  issues.push("legacy Supabase JWT API keys are not accepted for production; use sb_publishable_ and sb_secret_ keys");
+}
 const requestedAiProvider = (process.env.AI_PROVIDER?.trim() || "auto").toLowerCase();
 if (!["auto", "openai", "hunyuan"].includes(requestedAiProvider)) issues.push("AI_PROVIDER must be auto, openai, or hunyuan");
 const activeAiProvider = requestedAiProvider === "hunyuan"

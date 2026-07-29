@@ -3,8 +3,10 @@
 import process from "node:process";
 
 const BASE_URL = "https://www.thesportsdb.com/api/v1/json";
+const API_FOOTBALL_DIRECT_BASE_URL = "https://v3.football.api-sports.io";
 const PUBLIC_THESPORTSDB_DEMO_KEY = "123";
 const REQUEST_TIMEOUT_MS = 12_000;
+const DEFAULT_API_FOOTBALL_TEAM_LIMIT = 16;
 
 const DEFAULT_LEAGUES = [
   "English Premier League",
@@ -120,6 +122,10 @@ function parseArgs(argv) {
     maxTeams: 120,
     maxPlayersPerTeam: 80,
     concurrency: 4,
+    apiFootballTeamLimit: Math.min(
+      40,
+      Math.max(0, Number(readEnv("ROSTER_API_FOOTBALL_TEAM_LIMIT", String(DEFAULT_API_FOOTBALL_TEAM_LIMIT))) || 0)
+    ),
     dryRun: false
   };
 
@@ -134,6 +140,9 @@ function parseArgs(argv) {
       index += 1;
     } else if (item === "--concurrency" && next) {
       args.concurrency = Math.min(8, Math.max(1, Number(next) || args.concurrency));
+      index += 1;
+    } else if (item === "--api-football-team-limit" && next) {
+      args.apiFootballTeamLimit = Math.min(40, Math.max(0, Number(next) || 0));
       index += 1;
     } else if (item === "--dry-run") {
       args.dryRun = true;
@@ -196,31 +205,97 @@ async function fetchJson(url) {
   }
 }
 
+function getApiFootballConfig() {
+  const directKey = readEnv("API_FOOTBALL_KEY");
+  if (directKey) {
+    return {
+      authMode: "direct",
+      baseUrl: API_FOOTBALL_DIRECT_BASE_URL,
+      headers: { "x-apisports-key": directKey }
+    };
+  }
+
+  const rapidApiKey = readEnv("RAPIDAPI_FOOTBALL_KEY");
+  if (!rapidApiKey) return null;
+  const host = readEnv("RAPIDAPI_FOOTBALL_HOST", "api-football-v1.p.rapidapi.com");
+  if (!/^[a-z0-9.-]+$/i.test(host)) {
+    throw new Error("RAPIDAPI_FOOTBALL_HOST is invalid.");
+  }
+  return {
+    authMode: "rapidapi",
+    baseUrl: `https://${host}/v3`,
+    headers: {
+      "x-rapidapi-key": rapidApiKey,
+      "x-rapidapi-host": host
+    }
+  };
+}
+
+async function fetchApiFootball(config, endpoint, params) {
+  const url = new URL(`${config.baseUrl}/${endpoint.replace(/^\/+/, "")}`);
+  Object.entries(params).forEach(([name, value]) => {
+    if (value !== undefined && value !== null && String(value).trim()) {
+      url.searchParams.set(name, String(value));
+    }
+  });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "football-prediction-agent/0.1",
+        ...config.headers
+      },
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      throw new Error(`API-Football returned ${response.status}`);
+    }
+    const payload = await response.json();
+    const errors = payload?.errors;
+    if (
+      (Array.isArray(errors) && errors.length)
+      || (errors && typeof errors === "object" && Object.keys(errors).length)
+    ) {
+      throw new Error("API-Football rejected the request or the daily quota is exhausted.");
+    }
+    return Array.isArray(payload?.response) ? payload.response : [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function getSupabaseConfig() {
   const url = readEnv("SUPABASE_URL").replace(/\/+$/, "");
-  const serviceRoleKey = readEnv("SUPABASE_SERVICE_ROLE_KEY");
-  const anonKey = readEnv("SUPABASE_ANON_KEY");
+  const secretKey = readEnv("SUPABASE_SECRET_KEY") || readEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const publishableKey = readEnv("SUPABASE_PUBLISHABLE_KEY") || readEnv("SUPABASE_ANON_KEY");
   const table = readEnv("SUPABASE_ROSTER_CACHE_TABLE", "football_roster_cache");
 
-  if (!url || (!serviceRoleKey && !anonKey)) {
+  if (!url || (!secretKey && !publishableKey)) {
     return null;
   }
 
   return {
     url,
     table,
-    readKey: serviceRoleKey || anonKey,
-    writeKey: serviceRoleKey || null,
-    writeMode: serviceRoleKey ? "service-role" : "read-only"
+    readKey: secretKey || publishableKey,
+    writeKey: secretKey || null,
+    writeMode: secretKey ? "secret-key" : "read-only"
   };
 }
 
 function supabaseHeaders(key) {
-  return {
+  const headers = {
     apikey: key,
-    Authorization: `Bearer ${key}`,
     "Content-Type": "application/json"
   };
+  if (key.startsWith("eyJ") && key.split(".").length === 3) {
+    headers.Authorization = `Bearer ${key}`;
+  }
+  return headers;
 }
 
 async function readSupabaseCacheItem(config, cacheKey) {
@@ -241,7 +316,7 @@ async function readSupabaseCacheItem(config, cacheKey) {
 
 async function writeSupabaseCacheItem(config, cacheKey, payload) {
   if (!config.writeKey) {
-    throw new Error("Supabase roster cache writes require SUPABASE_SERVICE_ROLE_KEY.");
+    throw new Error("Supabase roster cache writes require SUPABASE_SECRET_KEY.");
   }
 
   const url = `${config.url}/rest/v1/${encodeURIComponent(config.table)}?on_conflict=cache_key`;
@@ -281,7 +356,7 @@ async function writeCloudCache(snapshot, changes, required) {
   const config = getSupabaseConfig();
   if (!config?.writeKey) {
     if (required) {
-      throw new Error("Supabase roster cache is required but SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured.");
+      throw new Error("Supabase roster cache is required but SUPABASE_URL and SUPABASE_SECRET_KEY are not configured.");
     }
     return false;
   }
@@ -385,8 +460,36 @@ function teamRecordScore(team) {
   ].reduce((total, value) => total + value, 0);
 }
 
+function finiteNumber(value) {
+  const parsed = typeof value === "number" ? value : Number(String(value ?? "").trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseHeightCm(value) {
+  const text = toText(value, 30).toLowerCase();
+  if (!text) return null;
+  const amount = Number(text.replace(",", ".").match(/\d+(?:\.\d+)?/)?.[0]);
+  if (!Number.isFinite(amount)) return null;
+  if (text.includes("ft") || text.includes("'")) return null;
+  const centimeters = text.includes("m") && !text.includes("cm") && amount < 3 ? amount * 100 : amount;
+  return centimeters >= 140 && centimeters <= 230 ? Math.round(centimeters) : null;
+}
+
+function ageFromBirthDate(value) {
+  const birthDate = new Date(toText(value, 30));
+  if (!Number.isFinite(birthDate.getTime())) return null;
+  const now = new Date();
+  let age = now.getUTCFullYear() - birthDate.getUTCFullYear();
+  const beforeBirthday =
+    now.getUTCMonth() < birthDate.getUTCMonth()
+    || (now.getUTCMonth() === birthDate.getUTCMonth() && now.getUTCDate() < birthDate.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age >= 14 && age <= 60 ? age : null;
+}
+
 function normalizePlayer(player, index, maxPlayersPerTeam) {
   const role = toText(player.strPosition, 60) || "Player";
+  const shirtNumber = finiteNumber(player.strNumber);
   return {
     id: toText(player.idPlayer, 40) || `player-${index + 1}`,
     name: toText(player.strPlayer, 100) || `Player ${index + 1}`,
@@ -398,6 +501,9 @@ function normalizePlayer(player, index, maxPlayersPerTeam) {
     defense: role.toLowerCase().includes("def") || role.toLowerCase().includes("back") || role.toLowerCase().includes("goal") ? 76 : 58,
     minutes: 70,
     avatarUrl: toText(player.strCutout || player.strThumb, 400),
+    age: ageFromBirthDate(player.dateBorn || player.strBirthDate),
+    shirtNumber: shirtNumber !== null && shirtNumber >= 0 && shirtNumber <= 99 ? Math.round(shirtNumber) : null,
+    heightCm: parseHeightCm(player.strHeight),
     metricsStatus: "placeholder",
     rosterStatus: player.idPlayer ? "provider" : "placeholder",
     note: "Roster entry refreshed from TheSportsDB; performance metrics require an official statistics provider.",
@@ -405,6 +511,47 @@ function normalizePlayer(player, index, maxPlayersPerTeam) {
       provider: "TheSportsDB",
       providerPlayerId: toText(player.idPlayer, 40)
     }
+  };
+}
+
+function normalizeApiFootballPlayer(player, index) {
+  const role = toText(player?.position, 60) || "Player";
+  const age = finiteNumber(player?.age);
+  const shirtNumber = finiteNumber(player?.number);
+  return {
+    id: toText(player?.id, 40) || `api-football-player-${index + 1}`,
+    name: toText(player?.name, 100) || `Player ${index + 1}`,
+    role,
+    status: "ready",
+    form: 0,
+    goals: 0,
+    assists: 0,
+    defense: 0,
+    minutes: 0,
+    avatarUrl: toText(player?.photo, 400),
+    age: age !== null && age >= 14 && age <= 60 ? Math.round(age) : null,
+    shirtNumber: shirtNumber !== null && shirtNumber >= 0 && shirtNumber <= 99 ? Math.round(shirtNumber) : null,
+    heightCm: null,
+    metricsStatus: "placeholder",
+    rosterStatus: player?.id ? "provider" : "placeholder",
+    note: "Current squad entry from API-Football. Match form, event metrics, height, and availability remain hidden until separately verified.",
+    source: {
+      provider: "API-Football",
+      providerPlayerId: toText(player?.id, 40)
+    }
+  };
+}
+
+function normalizeApiFootballCoach(coach) {
+  if (!coach?.id || !coach?.name) return null;
+  const age = finiteNumber(coach.age);
+  return {
+    id: toText(coach.id, 40),
+    name: toText(coach.name, 100),
+    age: age !== null && age >= 20 && age <= 100 ? Math.round(age) : null,
+    nationality: toText(coach.nationality, 80),
+    photoUrl: toText(coach.photo, 400),
+    source: "API-Football"
   };
 }
 
@@ -570,6 +717,43 @@ async function fetchPlayers(apiKey, team, maxPlayersPerTeam) {
     .map((player, index) => normalizePlayer(player, index, maxPlayersPerTeam));
 }
 
+async function fetchApiFootballTeamData(config, team, maxPlayersPerTeam) {
+  const matches = await fetchApiFootball(config, "teams", { search: team.strTeam });
+  const expectedName = normalizedTeamName(team.strTeam);
+  const expectedKind = inferKind(team.strTeam, team.strCountry || "", team.strLeague || "");
+  const exactMatches = matches.filter((row) => normalizedTeamName(row?.team?.name) === expectedName);
+  const matched =
+    exactMatches.find((row) => Boolean(row?.team?.national) === (expectedKind === "national"))
+    || exactMatches[0];
+  const providerTeamId = finiteNumber(matched?.team?.id);
+  if (!providerTeamId) return null;
+
+  const [squadResult, coachResult] = await Promise.allSettled([
+    fetchApiFootball(config, "players/squads", { team: providerTeamId }),
+    fetchApiFootball(config, "coachs", { team: providerTeamId })
+  ]);
+  const squadRows = squadResult.status === "fulfilled" ? squadResult.value : [];
+  const coachRows = coachResult.status === "fulfilled" ? coachResult.value : [];
+  const players = (squadRows[0]?.players ?? [])
+    .slice(0, maxPlayersPerTeam)
+    .map((player, index) => normalizeApiFootballPlayer(player, index));
+
+  if (squadResult.status === "rejected") {
+    console.warn(`[roster-refresh] API-Football squad unavailable for ${team.strTeam}: ${squadResult.reason instanceof Error ? squadResult.reason.message : squadResult.reason}`);
+  }
+  if (coachResult.status === "rejected") {
+    console.warn(`[roster-refresh] API-Football coach unavailable for ${team.strTeam}: ${coachResult.reason instanceof Error ? coachResult.reason.message : coachResult.reason}`);
+  }
+
+  return {
+    providerTeamId: String(providerTeamId),
+    badgeUrl: toText(matched?.team?.logo, 500),
+    country: toText(matched?.team?.country, 80),
+    players,
+    coach: normalizeApiFootballCoach(coachRows[0])
+  };
+}
+
 async function mapConcurrent(items, concurrency, mapper) {
   const results = new Array(items.length);
   let nextIndex = 0;
@@ -596,6 +780,48 @@ function teamKey(team) {
 
 function playerKey(player) {
   return key(player.name);
+}
+
+function hasProviderRoster(team) {
+  return team?.rosterStatus === "provider"
+    && Array.isArray(team.players)
+    && team.players.some((player) => player?.rosterStatus === "provider");
+}
+
+function snapshotTeamLookup(snapshot) {
+  return new Map(
+    (snapshot?.teams ?? []).map((team) => [
+      `${normalizedTeamName(team.name)}::${team.kind}`,
+      team
+    ])
+  );
+}
+
+function previousTeamFor(rawTeam, previousTeams) {
+  const name = toText(rawTeam.strTeam, 100);
+  const country = toText(rawTeam.strCountry, 80);
+  const league = toText(rawTeam.strLeague, 100);
+  return previousTeams.get(`${normalizedTeamName(name)}::${inferKind(name, country, league)}`) ?? null;
+}
+
+function mergePreviousProviderData(team, previousTeam) {
+  if (!previousTeam) return team;
+  const merged = {
+    ...team,
+    providerTeamIds: {
+      ...(previousTeam.providerTeamIds ?? {}),
+      ...(team.providerTeamIds ?? {})
+    },
+    coach: team.coach ?? previousTeam.coach ?? null
+  };
+
+  if (!hasProviderRoster(merged) && hasProviderRoster(previousTeam)) {
+    merged.players = previousTeam.players;
+    merged.rosterStatus = "provider";
+    merged.rosterUpdatedAt = previousTeam.rosterUpdatedAt ?? previousTeam.generatedAt ?? null;
+    merged.source = previousTeam.source || merged.source;
+  }
+  return merged;
 }
 
 function diffSnapshots(previous, current) {
@@ -681,44 +907,104 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const apiKey = process.env.THESPORTSDB_API_KEY?.trim() || PUBLIC_THESPORTSDB_DEMO_KEY;
   const apiKeyMode = apiKey === PUBLIC_THESPORTSDB_DEMO_KEY ? "public-demo" : "server-env";
+  const apiFootball = getApiFootballConfig();
   const beijing = beijingDateParts();
   const startedAt = new Date().toISOString();
 
   console.log(`[roster-refresh] start ${startedAt}`);
   console.log(`[roster-refresh] provider TheSportsDB (${apiKeyMode})`);
+  console.log(`[roster-refresh] API-Football ${apiFootball ? `${apiFootball.authMode}, limit=${args.apiFootballTeamLimit}` : "not configured"}`);
   console.log("[roster-refresh] storage cloud-only");
 
+  const previous = await readPreviousCloudSnapshot();
+  const previousTeams = snapshotTeamLookup(previous);
   const rawTeams = await fetchTeams(apiKey, args.maxTeams);
   const playerLookupLimit = apiKeyMode === "public-demo" ? 0 : Math.min(40, rawTeams.length);
+  const missingRosterIndices = rawTeams
+    .map((team, index) => ({ index, previousTeam: previousTeamFor(team, previousTeams) }))
+    .filter(({ previousTeam }) => !hasProviderRoster(previousTeam))
+    .map(({ index }) => index);
+  const coveredRosterCount = rawTeams.length - missingRosterIndices.length;
+  const orderedMissingIndices = missingRosterIndices.length
+    ? Array.from(
+        { length: missingRosterIndices.length },
+        (_, offset) => missingRosterIndices[(coveredRosterCount + offset) % missingRosterIndices.length]
+      )
+    : [];
+  const refreshFallbackStart = hash(beijing.date) % Math.max(1, rawTeams.length);
+  const refreshFallbackIndices = Array.from(
+    { length: rawTeams.length },
+    (_, offset) => (refreshFallbackStart + offset) % rawTeams.length
+  );
+  const apiFootballTargets = new Set(
+    [...orderedMissingIndices, ...refreshFallbackIndices]
+      .filter((index, position, values) => values.indexOf(index) === position)
+      .slice(0, apiFootball ? args.apiFootballTeamLimit : 0)
+  );
+
   const teams = await mapConcurrent(rawTeams, args.concurrency, async (team, index) => {
+    const previousTeam = previousTeamFor(team, previousTeams);
     try {
       const players = index < playerLookupLimit ? await fetchPlayers(apiKey, team, args.maxPlayersPerTeam) : [];
-      return normalizeTeam(team, players);
+      let normalized = normalizeTeam(team, players);
+      if (!players.length && apiFootball && apiFootballTargets.has(index)) {
+        try {
+          const providerData = await fetchApiFootballTeamData(apiFootball, team, args.maxPlayersPerTeam);
+          if (providerData) {
+            normalized = {
+              ...normalized,
+              source: normalized.source === "TheSportsDB" ? "TheSportsDB + API-Football" : "API-Football + Curated Catalog",
+              badgeUrl: normalized.badgeUrl || providerData.badgeUrl,
+              rosterStatus: providerData.players.length ? "provider" : normalized.rosterStatus,
+              players: providerData.players.length ? providerData.players : normalized.players,
+              coach: providerData.coach,
+              providerTeamIds: {
+                apiFootball: providerData.providerTeamId
+              },
+              rosterUpdatedAt: providerData.players.length ? new Date().toISOString() : null
+            };
+          }
+        } catch (error) {
+          console.warn(`[roster-refresh] API-Football enrichment failed for ${team.strTeam ?? team.idTeam}: ${error instanceof Error ? error.message : error}`);
+        }
+      }
+      return mergePreviousProviderData(normalized, previousTeam);
     } catch (error) {
       console.warn(`[roster-refresh] player fetch failed for ${team.strTeam ?? team.idTeam}: ${error instanceof Error ? error.message : error}`);
-      return normalizeTeam(team, []);
+      return mergePreviousProviderData(normalizeTeam(team, []), previousTeam);
     }
   });
 
+  const apiFootballRosterCount = teams.filter((team) =>
+    team.players.some((player) => player?.source?.provider === "API-Football")
+  ).length;
+  const providerRosterCount = teams.filter(hasProviderRoster).length;
+  const providerPlayerCount = teams.reduce(
+    (total, team) => total + team.players.filter((player) => player.rosterStatus === "provider").length,
+    0
+  );
   const snapshot = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     beijingDate: beijing.date,
     beijingTime: beijing.isoLike,
     provider: {
-      name: "TheSportsDB",
-      apiKeyMode
+      name: apiFootballRosterCount ? "TheSportsDB + API-Football" : "TheSportsDB",
+      apiKeyMode,
+      rosterAuthMode: apiFootball?.authMode ?? "not-configured",
+      apiFootballTeamLimit: args.apiFootballTeamLimit
     },
     totals: {
       teams: teams.length,
       clubs: teams.filter((team) => team.kind === "club").length,
       nationalTeams: teams.filter((team) => team.kind === "national").length,
-      players: teams.reduce((total, team) => total + team.players.length, 0)
+      players: teams.reduce((total, team) => total + team.players.length, 0),
+      providerRosters: providerRosterCount,
+      providerPlayers: providerPlayerCount
     },
     teams
   };
 
-  const previous = await readPreviousCloudSnapshot();
   const changes = {
     schemaVersion: 1,
     generatedAt: snapshot.generatedAt,
@@ -733,7 +1019,9 @@ async function main() {
           snapshot: snapshot.totals,
           coverage: {
             badges: snapshot.teams.filter((team) => Boolean(team.badgeUrl)).length,
-            providerRosters: snapshot.teams.filter((team) => team.rosterStatus === "provider").length,
+            providerRosters: providerRosterCount,
+            apiFootballRosters: apiFootballRosterCount,
+            providerPlayers: providerPlayerCount,
             featuredTeams: ["Manchester City", "Real Madrid"].map((name) => {
               const team = snapshot.teams.find((item) => normalizedTeamName(item.name) === normalizedTeamName(name));
               return { name, present: Boolean(team), badge: Boolean(team?.badgeUrl) };
@@ -752,7 +1040,9 @@ async function main() {
 
   console.log(`[roster-refresh] teams=${snapshot.totals.teams} players=${snapshot.totals.players}`);
   console.log(`[roster-refresh] badges=${snapshot.teams.filter((team) => Boolean(team.badgeUrl)).length}`);
-  console.log(`[roster-refresh] provider-rosters=${snapshot.teams.filter((team) => team.rosterStatus === "provider").length}`);
+  console.log(`[roster-refresh] provider-rosters=${providerRosterCount}`);
+  console.log(`[roster-refresh] api-football-rosters=${apiFootballRosterCount}`);
+  console.log(`[roster-refresh] provider-players=${providerPlayerCount}`);
   console.log(`[roster-refresh] roster-change-teams=${changes.totals.teamsWithRosterChanges}`);
   console.log(`[roster-refresh] done ${snapshot.generatedAt}`);
 }

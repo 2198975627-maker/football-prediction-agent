@@ -81,6 +81,18 @@ The current app skeleton is safe-by-default:
 
 The team selector can manually import public team records through the server-side `POST /api/live-team` proxy. It currently uses TheSportsDB with `THESPORTSDB_API_KEY` when configured, or the provider's public demo key for local development. The key is never sent to browser code.
 
+The daily cloud roster job can also use `API_FOOTBALL_KEY` or
+`RAPIDAPI_FOOTBALL_KEY`. It rotates a bounded set of teams through API-Football's
+team, current-squad, and coach endpoints, then preserves earlier provider rosters
+in Supabase. The default limit is 16 teams per day, or at most 48 first-time
+requests. Player names, photos, ages, numbers, and coach identities are treated
+as roster metadata; form, injuries, height, xG, event maps, penalty rates, and
+matchup claims stay blank until a suitable source verifies them.
+
+Use modern Supabase `SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SECRET_KEY` values
+for cloud auth and cache access. The older `SUPABASE_ANON_KEY` and
+`SUPABASE_SERVICE_ROLE_KEY` names remain compatibility aliases.
+
 The player-event panel can import a safe historical sample through `POST /api/player-events`. The first wired provider is StatsBomb Open Data, using the Argentina vs France 2022 World Cup final as a free event-log demo for shots, xG, dribbles, tackles, blocks, interceptions, keeper actions, penalties, and heatmap points. Production real-time mode should later map selected fixtures to API-Football, Sportmonks, StatsBomb paid, Opta, or Wyscout through the same server-side route.
 
 The official data-source panel can check `POST /api/live-team`, `POST /api/player-events`, and `GET /api/sports-data-sources` readiness. The selected production stack is API-Football + Sportmonks + StatsBomb + football-data.org + TheSportsDB, plus China-access candidates such as 纳米数据, 聚合数据, 飞鲸体育数据, and 全速数据. Every provider is called from server-side routes only.

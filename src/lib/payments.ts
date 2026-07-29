@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { serviceClient } from "./supabase-auth";
+import { getSupabaseSettings } from "./supabase-config";
 import type { AiProvider } from "./ai-provider";
 import type { PredictionInput } from "./schemas";
 
@@ -42,10 +43,11 @@ export function stripeClient() {
 }
 
 export function isPaymentConfigured() {
+  const { secretKey } = getSupabaseSettings();
   return Boolean(
     process.env.STRIPE_SECRET_KEY?.trim()
       && process.env.STRIPE_WEBHOOK_SECRET?.trim()
-      && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+      && secretKey
   );
 }
 

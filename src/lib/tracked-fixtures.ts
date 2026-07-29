@@ -1,4 +1,5 @@
 import type { LiveMatchIntelligence } from "./providers/sportmonks";
+import { getSupabaseSettings, supabaseRestHeaders } from "./supabase-config";
 
 export type TrackedFixture = {
   provider: LiveMatchIntelligence["provider"];
@@ -18,18 +19,9 @@ function env(name: string, fallback = "") {
 }
 
 function config() {
-  const url = env("SUPABASE_URL").replace(/\/+$/, "");
-  const key = env("SUPABASE_SERVICE_ROLE_KEY");
+  const { url, secretKey: key } = getSupabaseSettings();
   const table = env("SUPABASE_TRACKED_FIXTURES_TABLE", "football_tracked_fixtures");
   return url && key ? { url, key, table } : null;
-}
-
-function headers(key: string) {
-  return {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json"
-  };
 }
 
 function nextRefresh(startsAt: string, provider: LiveMatchIntelligence["provider"]) {
@@ -72,7 +64,7 @@ export async function trackMatchIntelligence(data: LiveMatchIntelligence) {
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { ...headers(settings.key), Prefer: "resolution=merge-duplicates,return=minimal" },
+      headers: { ...supabaseRestHeaders(settings.key), Prefer: "resolution=merge-duplicates,return=minimal" },
       body: JSON.stringify([row]),
       signal: AbortSignal.timeout(5000)
     });
@@ -88,7 +80,7 @@ export async function listDueTrackedFixtures(limit = 8): Promise<TrackedFixture[
   const now = encodeURIComponent(new Date().toISOString());
   const url = `${settings.url}/rest/v1/${encodeURIComponent(settings.table)}?active=eq.true&next_refresh_at=lte.${now}&select=provider,fixture_id,team_a,team_b,starts_at,next_refresh_at,last_refreshed_at,refresh_stage,active,last_error&order=next_refresh_at.asc&limit=${Math.min(20, Math.max(1, limit))}`;
   const response = await fetch(url, {
-    headers: headers(settings.key),
+    headers: supabaseRestHeaders(settings.key),
     cache: "no-store",
     signal: AbortSignal.timeout(5000)
   });
@@ -103,7 +95,7 @@ export async function markTrackedFixtureError(provider: TrackedFixture["provider
   try {
     const response = await fetch(url, {
       method: "PATCH",
-      headers: { ...headers(settings.key), Prefer: "return=minimal" },
+      headers: { ...supabaseRestHeaders(settings.key), Prefer: "return=minimal" },
       body: JSON.stringify({
         last_error: message.slice(0, 300),
         next_refresh_at: new Date(Date.now() + 30 * 60_000).toISOString(),

@@ -1,15 +1,14 @@
 import { createClient, type User } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { getSupabaseSettings } from "./supabase-config";
 
 export const ACCESS_COOKIE = "football_access";
 export const REFRESH_COOKIE = "football_refresh";
 
 function settings() {
-  const url = process.env.SUPABASE_URL?.trim();
-  const anonKey = process.env.SUPABASE_ANON_KEY?.trim();
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if (!url || !anonKey) return null;
-  return { url, anonKey, serviceKey };
+  const { url, publishableKey, secretKey } = getSupabaseSettings();
+  if (!url || !publishableKey) return null;
+  return { url, publishableKey, secretKey };
 }
 
 function client(key: string) {
@@ -22,13 +21,13 @@ export function isAuthConfigured() { return Boolean(settings()); }
 export function authClient() {
   const config = settings();
   if (!config) throw new Error("Supabase Auth 尚未配置。");
-  return client(config.anonKey);
+  return client(config.publishableKey);
 }
 
 export function serviceClient() {
   const config = settings();
-  if (!config?.serviceKey) throw new Error("Supabase Service Role 尚未配置。");
-  return client(config.serviceKey);
+  if (!config?.secretKey) throw new Error("Supabase secret key is not configured.");
+  return client(config.secretKey);
 }
 
 function cookieValue(request: Request, name: string) {

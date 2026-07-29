@@ -58,6 +58,15 @@ type PlayerStatus = {
   defense: number;
   minutes: number;
   avatarUrl?: string;
+  age?: number | null;
+  shirtNumber?: number | null;
+  heightCm?: number | null;
+  shotsOnTarget?: number | null;
+  saves?: number | null;
+  penaltiesTaken?: number | null;
+  penaltiesScored?: number | null;
+  penaltiesFaced?: number | null;
+  penaltySaves?: number | null;
   metricsStatus?: "verified" | "placeholder" | "user-imported";
   rosterStatus?: "provider" | "placeholder" | "user-imported";
   note: string;
@@ -78,6 +87,19 @@ type TeamProfile = {
   stadiumCapacity?: number | null;
   source?: string;
   sourceTeamId?: string;
+  rosterUpdatedAt?: string | null;
+  coach?: {
+    id?: string;
+    name: string;
+    age?: number | null;
+    nationality?: string;
+    photoUrl?: string;
+    source?: string;
+    metricsStatus?: "verified" | "placeholder";
+    flexibility?: number | null;
+    substitution?: number | null;
+    gameState?: number | null;
+  } | null;
   metricsStatus?: "verified" | "placeholder";
   rosterStatus?: "provider" | "placeholder";
   attack: number;
@@ -127,7 +149,7 @@ type MatchupInsight = {
   defender: PlayerStatus;
   attackValue: number;
   defenseValue: number;
-  aerialEdge: number;
+  aerialEdge: number | null;
   note: string;
 };
 
@@ -206,9 +228,10 @@ function describeTeamImport(data: LiveTeamResponse, teams: TeamProfile[]) {
   const clubs = displayTeams.filter((team) => team.kind === "club");
   const clubBadges = clubs.filter((team) => Boolean(team.badgeUrl)).length;
   const providerRosters = displayTeams.filter((team) => team.rosterStatus === "provider").length;
+  const providerName = data.source?.name?.replace(/\s+Daily Cache$/i, "");
   const source =
     data.storage === "supabase"
-      ? "云端缓存"
+      ? `云端缓存${providerName ? ` · ${providerName}` : ""}`
       : data.storage === "local"
         ? "开发快照"
         : data.source?.name ?? "联网数据源";
@@ -1444,6 +1467,13 @@ function boundedNumber(value: unknown, fallback: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, Math.round(numberValue)));
 }
 
+function optionalBoundedNumber(value: unknown, min: number, max: number) {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return null;
+  return Math.min(max, Math.max(min, Math.round(numberValue)));
+}
+
 function splitCsvLine(line: string) {
   const cells: string[] = [];
   let current = "";
@@ -1499,6 +1529,11 @@ function normalizeImportedPlayer(row: Record<string, unknown>, index: number): P
     assists: boundedNumber(row.assists ?? row["助攻"], 0, 0, 99),
     defense: boundedNumber(row.defense ?? row["防守"], 60),
     minutes: boundedNumber(row.minutes ?? row["预计出场"], 75),
+    age: optionalBoundedNumber(row.age ?? row["年龄"], 14, 60),
+    shirtNumber: optionalBoundedNumber(row.shirtNumber ?? row.number ?? row["号码"], 0, 99),
+    heightCm: optionalBoundedNumber(row.heightCm ?? row.height ?? row["身高"], 140, 230),
+    metricsStatus: "user-imported",
+    rosterStatus: "user-imported",
     note: String(row.note ?? row["备注"] ?? "导入数据，等待真实来源验证。").trim()
   };
 }
@@ -1850,14 +1885,23 @@ function clampMetric(value: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
-function textSeed(text: string) {
-  return Array.from(text).reduce((total, char) => total + char.charCodeAt(0), 0);
+function isPlayerMetricsVerified(player: PlayerStatus) {
+  return player.metricsStatus === "verified" || player.metricsStatus === "user-imported";
 }
 
-function playerHeight(player: PlayerStatus) {
-  const role = player.role.toLowerCase();
-  const base = role.includes("goal") ? 190 : role.includes("def") || player.defense > 78 ? 186 : role.includes("forward") ? 182 : 178;
-  return base + (textSeed(player.name) % 9) - 4;
+function verifiedPlayerHeight(player: PlayerStatus) {
+  return typeof player.heightCm === "number" && Number.isFinite(player.heightCm)
+    ? player.heightCm
+    : null;
+}
+
+function playerBioLine(player: PlayerStatus) {
+  const values = [
+    typeof player.shirtNumber === "number" ? `#${player.shirtNumber}` : null,
+    typeof player.age === "number" ? `${player.age} 岁` : null,
+    typeof player.heightCm === "number" ? `${player.heightCm}cm` : null
+  ].filter(Boolean);
+  return values.length ? values.join(" / ") : "号码、年龄、身高待数据源补齐";
 }
 
 function pickPlayer(team: TeamProfile, roleHints: string[], fallbackIndex: number) {
@@ -1900,20 +1944,27 @@ function buildMatchupInsights(teamA: TeamProfile, teamB: TeamProfile): MatchupIn
   return rows.map((row) => {
     const attackValue = clampMetric(row.attacker.form * 0.56 + row.attacker.goals * 2.4 + row.attacker.assists * 2.1);
     const defenseValue = clampMetric(row.defender.defense * 0.72 + row.defender.minutes * 0.18);
-    const aerialEdge = playerHeight(row.attacker) - playerHeight(row.defender);
+    const attackerHeight = verifiedPlayerHeight(row.attacker);
+    const defenderHeight = verifiedPlayerHeight(row.defender);
+    const aerialEdge = attackerHeight !== null && defenderHeight !== null
+      ? attackerHeight - defenderHeight
+      : null;
     const edge = attackValue - defenseValue;
+    const duelNote =
+      edge > 8
+        ? "进攻端有制造一对一压力的空间。"
+        : edge < -8
+          ? "防守端对抗和封堵占优。"
+          : "对位接近，临场状态会放大影响。";
 
     return {
       ...row,
       attackValue,
       defenseValue,
       aerialEdge,
-      note:
-        edge > 8
-          ? "进攻端有制造一对一压力的空间。"
-          : edge < -8
-            ? "防守端对抗和封堵占优。"
-            : "对位接近，临场状态会放大影响。"
+      note: aerialEdge === null
+        ? `${duelNote} 身高数据缺失，未判断高空优势。`
+        : duelNote
     };
   });
 }
@@ -1930,22 +1981,31 @@ function buildKeeperPenaltyInsight(teamA: TeamProfile, teamB: TeamProfile): Keep
     }
   ];
 
-  return pairs.map(({ keeper, shooter }) => {
-    const seed = textSeed(`${keeper.name}:${shooter.name}`);
-    return {
+  return pairs.flatMap(({ keeper, shooter }) => {
+    const penaltiesFaced = keeper.penaltiesFaced ?? 0;
+    const penaltiesTaken = shooter.penaltiesTaken ?? 0;
+    if (!isPlayerMetricsVerified(keeper) || !isPlayerMetricsVerified(shooter) || penaltiesFaced <= 0 || penaltiesTaken <= 0) {
+      return [];
+    }
+    const penaltySave = clampMetric(((keeper.penaltySaves ?? 0) / penaltiesFaced) * 100);
+    const penaltyScore = clampMetric(((shooter.penaltiesScored ?? 0) / penaltiesTaken) * 100);
+    return [{
       keeper,
       shooter,
-      saveValue: clampMetric(keeper.defense * 0.66 + keeper.form * 0.22 + (seed % 8)),
-      shotValue: clampMetric(shooter.form * 0.58 + shooter.goals * 3.2 + shooter.minutes * 0.12),
-      penaltySave: clampMetric(13 + (seed % 22), 5, 45),
-      penaltyScore: clampMetric(66 + ((seed >> 2) % 23), 50, 92)
-    };
+      saveValue: keeper.shotsOnTarget ? clampMetric(((keeper.saves ?? 0) / keeper.shotsOnTarget) * 100) : penaltySave,
+      shotValue: penaltyScore,
+      penaltySave,
+      penaltyScore
+    }];
   });
 }
 
 function buildTacticalChains(teamA: TeamProfile, teamB: TeamProfile): TacticalChain[] {
-  const aAerial = clampMetric(teamA.attack * 0.45 + teamA.press * 0.18 + playerHeight(pickPlayer(teamA, ["forward", "striker", "前锋"], 0)) * 0.18 - 25);
-  const bAerialDef = clampMetric(teamB.defense * 0.5 + playerHeight(pickPlayer(teamB, ["defender", "back", "后卫"], 3)) * 0.2 - 24);
+  const aForwardHeight = verifiedPlayerHeight(pickPlayer(teamA, ["forward", "striker", "前锋"], 0));
+  const bDefenderHeight = verifiedPlayerHeight(pickPlayer(teamB, ["defender", "back", "后卫"], 3));
+  const aerialHeightReady = aForwardHeight !== null && bDefenderHeight !== null;
+  const aAerial = clampMetric(teamA.attack * 0.62 + teamA.press * 0.18 + (aForwardHeight ? (aForwardHeight - 170) * 0.7 : 0));
+  const bAerialDef = clampMetric(teamB.defense * 0.7 + (bDefenderHeight ? (bDefenderHeight - 170) * 0.75 : 0));
   const bPress = clampMetric(teamB.press * 0.62 + teamB.form * 0.2);
   const aBuild = clampMetric(teamA.possession * 0.54 + teamA.fitness * 0.16);
   const aTransition = clampMetric(teamA.fitness * 0.4 + teamA.attack * 0.35);
@@ -1959,7 +2019,11 @@ function buildTacticalChains(teamA: TeamProfile, teamB: TeamProfile): TacticalCh
       defenseLabel: `${teamB.name} 防空`,
       attackValue: aAerial,
       defenseValue: bAerialDef,
-      verdict: aAerial > bAerialDef ? "传中点可能形成错位。" : "防空端能缓冲高球压力。"
+      verdict: !aerialHeightReady
+        ? "双方身高数据不完整，暂不判断高空克制。"
+        : aAerial > bAerialDef
+          ? "传中点可能形成错位。"
+          : "防空端能缓冲高球压力。"
     },
     {
       id: "press",
@@ -1983,25 +2047,35 @@ function buildTacticalChains(teamA: TeamProfile, teamB: TeamProfile): TacticalCh
 }
 
 function buildCoachProfiles(teamA: TeamProfile, teamB: TeamProfile): CoachProfile[] {
-  return [teamA, teamB].map((team) => {
-    const seed = textSeed(team.name);
-    const flexibility = clampMetric(54 + (seed % 31) + (team.form - 70) * 0.25);
-    const substitution = clampMetric(50 + ((seed >> 2) % 34) + (team.fitness - 70) * 0.2);
-    const gameState = clampMetric((flexibility + substitution + team.press * 0.45) / 2.45);
-
-    return {
+  return [teamA, teamB].flatMap((team) => {
+    const coach = team.coach;
+    if (
+      coach?.metricsStatus !== "verified"
+      || typeof coach.flexibility !== "number"
+      || typeof coach.substitution !== "number"
+      || typeof coach.gameState !== "number"
+    ) {
+      return [];
+    }
+    return [{
       teamName: team.name,
-      flexibility,
-      substitution,
-      gameState,
+      flexibility: coach.flexibility,
+      substitution: coach.substitution,
+      gameState: coach.gameState,
       risk:
-        gameState >= 78
+        coach.gameState >= 78
           ? "调整空间较大"
-          : gameState >= 64
+          : coach.gameState >= 64
             ? "调整能力中等"
             : "临场变化偏保守"
-    };
+    }];
   });
+}
+
+function displayRosterPlayers(team: TeamProfile) {
+  return (team.players ?? []).filter(
+    (player) => player.rosterStatus === "provider" || player.rosterStatus === "user-imported"
+  );
 }
 
 function PlayerCard({ player, onOpen }: { player: PlayerStatus; onOpen: () => void }) {
@@ -2017,7 +2091,7 @@ function PlayerCard({ player, onOpen }: { player: PlayerStatus; onOpen: () => vo
           </div>
         </div>
         <button type="button" onClick={onOpen}>
-          {statusLabel(player.status)}
+          {verified ? statusLabel(player.status) : "状态待核验"}
         </button>
       </div>
       <div className="player-stats">
@@ -2046,7 +2120,7 @@ function TeamRosterPreview({
   status?: LiveImportStatus;
   onOpenPlayer: (player: PlayerStatus) => void;
 }) {
-  const players = team.players ?? [];
+  const players = displayRosterPlayers(team);
 
   return (
     <div className="team-roster-preview">
@@ -2069,6 +2143,19 @@ function TeamRosterPreview({
           </div>
         ) : null}
       </div>
+      {team.coach ? (
+        <div className="team-roster-coach">
+          {team.coach.photoUrl ? <img src={team.coach.photoUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <UserRoundCheck size={18} aria-hidden="true" />}
+          <span>
+            <strong>主教练 {team.coach.name}</strong>
+            <small>
+              {[team.coach.nationality, typeof team.coach.age === "number" ? `${team.coach.age} 岁` : null, team.coach.source]
+                .filter(Boolean)
+                .join(" / ")}
+            </small>
+          </span>
+        </div>
+      ) : null}
       {team.metricsStatus !== "verified" ? (
         <div className="data-quality-note" role="note">
           名单和照片来自 {team.source || "公开元数据源"}；未核验的状态、进球、助攻和攻防评分不会展示。
@@ -2087,8 +2174,8 @@ function TeamRosterPreview({
                 <em>{player.role}</em>
               </span>
               <span className="team-roster-player-data">
-                <b>{statusLabel(player.status)}</b>
-                <small>{player.metricsStatus === "verified" || player.metricsStatus === "user-imported" ? `状态 ${player.form} / 出场 ${player.minutes}%` : "暂无核验状态"}</small>
+                <b>{isPlayerMetricsVerified(player) ? statusLabel(player.status) : "状态待核验"}</b>
+                <small>{playerBioLine(player)}</small>
                 <small>{player.metricsStatus === "verified" || player.metricsStatus === "user-imported" ? `进球 ${player.goals} / 助攻 ${player.assists} / 防守 ${player.defense}` : "统计待正式数据源补齐"}</small>
               </span>
             </button>
@@ -2165,19 +2252,25 @@ export default function Home() {
     () => ({ ...baseTeamBProfile, players: playerOverrides.teamB ?? baseTeamBProfile.players }),
     [baseTeamBProfile, playerOverrides.teamB]
   );
+  const teamAPlayers = useMemo(() => displayRosterPlayers(teamAProfile), [teamAProfile]);
+  const teamBPlayers = useMemo(() => displayRosterPlayers(teamBProfile), [teamBProfile]);
   const probability = reportProbability;
   const hasVerifiedTeamMetrics = teamAProfile.metricsStatus === "verified" && teamBProfile.metricsStatus === "verified";
+  const hasVerifiedPlayerMetrics =
+    teamAProfile.players.length >= 5
+    && teamBProfile.players.length >= 5
+    && [...teamAProfile.players, ...teamBProfile.players].every(isPlayerMetricsVerified);
   const matchupInsights = useMemo(
-    () => hasVerifiedTeamMetrics ? buildMatchupInsights(teamAProfile, teamBProfile) : [],
-    [hasVerifiedTeamMetrics, teamAProfile, teamBProfile]
+    () => hasVerifiedTeamMetrics && hasVerifiedPlayerMetrics ? buildMatchupInsights(teamAProfile, teamBProfile) : [],
+    [hasVerifiedPlayerMetrics, hasVerifiedTeamMetrics, teamAProfile, teamBProfile]
   );
   const keeperPenaltyInsights = useMemo(
-    () => hasVerifiedTeamMetrics ? buildKeeperPenaltyInsight(teamAProfile, teamBProfile) : [],
-    [hasVerifiedTeamMetrics, teamAProfile, teamBProfile]
+    () => hasVerifiedTeamMetrics && hasVerifiedPlayerMetrics ? buildKeeperPenaltyInsight(teamAProfile, teamBProfile) : [],
+    [hasVerifiedPlayerMetrics, hasVerifiedTeamMetrics, teamAProfile, teamBProfile]
   );
   const tacticalChains = useMemo(
-    () => hasVerifiedTeamMetrics ? buildTacticalChains(teamAProfile, teamBProfile) : [],
-    [hasVerifiedTeamMetrics, teamAProfile, teamBProfile]
+    () => hasVerifiedTeamMetrics && hasVerifiedPlayerMetrics ? buildTacticalChains(teamAProfile, teamBProfile) : [],
+    [hasVerifiedPlayerMetrics, hasVerifiedTeamMetrics, teamAProfile, teamBProfile]
   );
   const coachProfiles = useMemo(
     () => hasVerifiedTeamMetrics ? buildCoachProfiles(teamAProfile, teamBProfile) : [],
@@ -3830,9 +3923,19 @@ export default function Home() {
                 </div>
               ) : null}
 
-              {!hasVerifiedTeamMetrics ? (
+              {!hasVerifiedTeamMetrics || !hasVerifiedPlayerMetrics ? (
                 <div className="data-quality-note" role="status">
                   球员对位、点球、战术克制和教练评分等待已核验的真实指标，当前不生成推测数值。
+                </div>
+              ) : null}
+              {hasVerifiedPlayerMetrics && keeperPenaltyInsights.length === 0 ? (
+                <div className="data-quality-note" role="status">
+                  暂无可核验的点球样本，点球命中率和扑救率保持留空。
+                </div>
+              ) : null}
+              {teamAProfile.coach || teamBProfile.coach ? (
+                <div className="data-quality-note" role="status">
+                  当前主教练身份已导入；阵型弹性、换人影响和临场响应没有正式统计时不生成评分。
                 </div>
               ) : null}
 
@@ -3841,7 +3944,11 @@ export default function Home() {
                   <div className="matchup-card" key={matchup.id}>
                     <div className="matchup-card-head">
                       <span>{matchup.title}</span>
-                      <strong>{matchup.aerialEdge > 0 ? `+${matchup.aerialEdge}` : matchup.aerialEdge}cm</strong>
+                      <strong>
+                        {matchup.aerialEdge === null
+                          ? "身高缺失"
+                          : `${matchup.aerialEdge > 0 ? `+${matchup.aerialEdge}` : matchup.aerialEdge}cm`}
+                      </strong>
                     </div>
                     <div className="duel-line">
                       <div>
@@ -3919,26 +4026,26 @@ export default function Home() {
                   {teamAProfile.name}
                   {playerOverrides.teamA ? <span>已导入</span> : null}
                 </div>
-                {teamAProfile.players.map((player) => (
-                  <PlayerCard
-                    player={player}
-                    onOpen={() => setActiveModal({ type: "player", player, team: teamAProfile })}
-                    key={`${teamAProfile.id}-${player.name}`}
-                  />
-                ))}
+                {teamAPlayers.length ? teamAPlayers.map((player) => (
+                    <PlayerCard
+                      player={player}
+                      onOpen={() => setActiveModal({ type: "player", player, team: teamAProfile })}
+                      key={`${teamAProfile.id}-${player.name}`}
+                    />
+                  )) : <p className="team-roster-empty">暂无真实球员名单，等待云端数据刷新或手动导入。</p>}
               </div>
               <div>
                 <div className="player-column-title">
                   {teamBProfile.name}
                   {playerOverrides.teamB ? <span>已导入</span> : null}
                 </div>
-                {teamBProfile.players.map((player) => (
-                  <PlayerCard
-                    player={player}
-                    onOpen={() => setActiveModal({ type: "player", player, team: teamBProfile })}
-                    key={`${teamBProfile.id}-${player.name}`}
-                  />
-                ))}
+                {teamBPlayers.length ? teamBPlayers.map((player) => (
+                    <PlayerCard
+                      player={player}
+                      onOpen={() => setActiveModal({ type: "player", player, team: teamBProfile })}
+                      key={`${teamBProfile.id}-${player.name}`}
+                    />
+                  )) : <p className="team-roster-empty">暂无真实球员名单，等待云端数据刷新或手动导入。</p>}
               </div>
             </div>
           </div>
@@ -4026,39 +4133,65 @@ export default function Home() {
                   <div>
                     <strong>{activeModal.player.name}</strong>
                     <span>
-                      {activeModal.player.role} / {activeModal.team.name} / {statusLabel(activeModal.player.status)}
+                      {activeModal.player.role} / {activeModal.team.name} / {isPlayerMetricsVerified(activeModal.player) ? statusLabel(activeModal.player.status) : "状态待核验"}
                     </span>
                   </div>
                   <TeamBadge team={activeModal.team} />
                 </div>
                 <div className="detail-grid">
                   <div>
-                    <span>综合状态</span>
-                    <strong>{activeModal.player.form}</strong>
+                    <span>球衣号码</span>
+                    <strong>{typeof activeModal.player.shirtNumber === "number" ? `#${activeModal.player.shirtNumber}` : "--"}</strong>
                   </div>
                   <div>
-                    <span>预计出场时间</span>
-                    <strong>{activeModal.player.minutes}%</strong>
+                    <span>年龄</span>
+                    <strong>{typeof activeModal.player.age === "number" ? `${activeModal.player.age} 岁` : "--"}</strong>
                   </div>
                   <div>
-                    <span>进球</span>
-                    <strong>{activeModal.player.goals}</strong>
+                    <span>身高</span>
+                    <strong>{typeof activeModal.player.heightCm === "number" ? `${activeModal.player.heightCm}cm` : "--"}</strong>
                   </div>
                   <div>
-                    <span>助攻</span>
-                    <strong>{activeModal.player.assists}</strong>
-                  </div>
-                  <div>
-                    <span>防守贡献</span>
-                    <strong>{activeModal.player.defense}</strong>
-                  </div>
-                  <div>
-                    <span>风险等级</span>
-                    <strong>{activeModal.player.status === "ready" ? "低" : "中"}</strong>
+                    <span>数据状态</span>
+                    <strong>{isPlayerMetricsVerified(activeModal.player) ? "已导入" : "待核验"}</strong>
                   </div>
                 </div>
-                <MetricBar label="状态趋势" value={activeModal.player.form} />
-                <MetricBar label="出场确定性" value={activeModal.player.minutes} tone="blue" />
+                {isPlayerMetricsVerified(activeModal.player) ? (
+                  <>
+                    <div className="detail-grid">
+                      <div>
+                        <span>综合状态</span>
+                        <strong>{activeModal.player.form}</strong>
+                      </div>
+                      <div>
+                        <span>预计出场时间</span>
+                        <strong>{activeModal.player.minutes}%</strong>
+                      </div>
+                      <div>
+                        <span>进球</span>
+                        <strong>{activeModal.player.goals}</strong>
+                      </div>
+                      <div>
+                        <span>助攻</span>
+                        <strong>{activeModal.player.assists}</strong>
+                      </div>
+                      <div>
+                        <span>防守贡献</span>
+                        <strong>{activeModal.player.defense}</strong>
+                      </div>
+                      <div>
+                        <span>风险等级</span>
+                        <strong>{activeModal.player.status === "ready" ? "低" : "中"}</strong>
+                      </div>
+                    </div>
+                    <MetricBar label="状态趋势" value={activeModal.player.form} />
+                    <MetricBar label="出场确定性" value={activeModal.player.minutes} tone="blue" />
+                  </>
+                ) : (
+                  <div className="data-quality-note" role="note">
+                    名单资料可展示，但状态、进球、助攻、防守、伤停和预计出场时间尚未由正式统计源核验。
+                  </div>
+                )}
                 <p className="modal-note">{activeModal.player.note}</p>
               </div>
             ) : activeModal.type === "account" ? (
