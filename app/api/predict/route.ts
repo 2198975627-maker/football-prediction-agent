@@ -13,8 +13,9 @@ import {
   readMatchIntelligenceCache,
   writeMatchIntelligenceCache
 } from "@/src/lib/match-intelligence-cache";
-import { getLiveMatchIntelligence } from "@/src/lib/providers/match-intelligence";
+import { configuredMatchProviders, getLiveMatchIntelligence } from "@/src/lib/providers/match-intelligence";
 import { predictionMarkdown } from "@/src/lib/openai-prediction";
+import { getSportsDataPricing } from "@/src/lib/sports-data-costs";
 import {
   getConfiguredAiProvider,
   isAiPricingConfigured,
@@ -111,6 +112,13 @@ export async function POST(request: Request) {
     if (!isAiPricingConfigured(platformAi.provider)) {
       return NextResponse.json({ ok: false, error: "平台 AI 价格尚未配置，已禁止真实收费预测。" }, { status: 503 });
     }
+    const sportsPricing = getSportsDataPricing(configuredMatchProviders());
+    if (!sportsPricing.configured || sportsPricing.costs.length === 0) {
+      return NextResponse.json({
+        ok: false,
+        error: "体育数据供应商成本尚未完整配置，已禁止真实收费预测。"
+      }, { status: 503 });
+    }
     order = await claimPaidOrder(input.paymentOrderId, user.id, estimate.estimatedUserChargeCents, input);
     if (!order) {
       return NextResponse.json({ ok: false, error: "支付订单未确认、金额不足或已被使用。" }, { status: 402 });
@@ -157,7 +165,12 @@ export async function POST(request: Request) {
     const generated = await runAiPrediction(input, matchData, quality, aiConfig, { safetyIdentifier });
     aiFinished = true;
     const aiCost = calculateAiModelCost(generated.aiProvider, generated.usage);
-    const sportsDataCostCents = usedPaidSportsData ? estimate.breakdown.sportsDataCents : 0;
+    const attemptedSportsProviders = matchData.fusion?.attemptedProviders ?? [matchData.provider];
+    const sportsPricing = getSportsDataPricing(attemptedSportsProviders);
+    if (input.billingMode === "platform" && usedPaidSportsData && !sportsPricing.configured) {
+      throw new Error("SPORTS_DATA_PRICING_NOT_CONFIGURED");
+    }
+    const sportsDataCostCents = usedPaidSportsData ? sportsPricing.totalCostCents : 0;
     const combinedApiCostCents = sportsDataCostCents + aiCost.billedModelCostCents;
     const actualApiCostCents = sportsDataCostCents
       + (input.billingMode === "platform" ? aiCost.billedModelCostCents : 0);
@@ -190,6 +203,7 @@ export async function POST(request: Request) {
           matchProvider: matchData.provider,
           dataQualityScore: quality.score,
           sportsDataCacheHit: !usedPaidSportsData,
+          sportsDataPricing: sportsPricing.costs,
           plannedUserChargeCents: chargedCents
         }
       });
@@ -279,7 +293,7 @@ export async function POST(request: Request) {
             currency: "CNY"
           },
           notes: [
-            usedPaidSportsData ? "已计入本次体育数据调用成本。" : "体育数据来自有效缓存，本次未重复计费。",
+            usedPaidSportsData ? "已按供应商配置的每次比赛刷新成本计入体育数据费用。" : "体育数据来自有效缓存，本次未重复计费。",
             aiCost.pricing.configured
               ? "已按模型返回的实际 Token 用量和本次价格快照计算。"
               : "已记录实际 Token 用量；尚未配置 CNY 模型价格，因此不展示模型金额。",

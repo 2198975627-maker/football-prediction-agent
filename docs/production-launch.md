@@ -60,6 +60,9 @@ Keep `LIVE_COSTS_ENABLED=false` until Stripe webhook delivery has been verified 
 3. Run `pnpm production:check` locally with the production variables loaded.
 4. Deploy a preview first and test `/api/health`.
 5. Add the custom domain in Vercel and update `NEXT_PUBLIC_APP_URL` and the Stripe webhook URL.
-6. Confirm the Vercel plan supports the cron frequency in `vercel.json`; otherwise move the 15-minute trigger to an external scheduler.
+6. Add GitHub Actions secrets `FOOTBALL_APP_URL` and `FOOTBALL_CRON_SECRET`.
+   The included `refresh-match-intelligence.yml` calls the protected endpoint
+   every 30 minutes and processes only fixtures that are due in Supabase.
+7. Confirm the daily roster cron in `vercel.json` is enabled after deployment.
 
 Do not paste secret keys into browser fields, source files, screenshots, chat messages, or any `NEXT_PUBLIC_*` variable.

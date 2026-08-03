@@ -8,6 +8,7 @@ import { getPlayerEventProviderStatuses } from "@/src/lib/providers/player-event
 import { getApiFootballAuthMode } from "@/src/lib/providers/api-football";
 import { getAiProviderStatus } from "@/src/lib/ai-provider";
 import { getSupabaseSettings } from "@/src/lib/supabase-config";
+import { getSportsDataPricing } from "@/src/lib/sports-data-costs";
 
 export async function GET(request: Request) {
   const limited = await checkRateLimit(request, { keyPrefix: "health", limit: 120, windowMs: 60_000 });
@@ -20,6 +21,7 @@ export async function GET(request: Request) {
 
   const config = getRuntimeConfig();
   const matchProviders = configuredMatchProviders();
+  const sportsPricing = getSportsDataPricing(matchProviders);
   const ai = getAiProviderStatus();
   const aiConfigured = ai.configured;
   const authConfigured = isAuthConfigured();
@@ -42,6 +44,7 @@ export async function GET(request: Request) {
       apiFootballAuthMode: getApiFootballAuthMode(),
       configuredMatchProviderCount: matchProviders.length,
       configuredMatchProviders: matchProviders,
+      pricingConfigured: sportsPricing.configured && sportsPricing.costs.length > 0,
       mainland: {
         anySport: Boolean(process.env.ANYSPORT_API_KEY?.trim()),
         anySportLineups: process.env.ANYSPORT_LINEUPS_ENABLED === "true",
@@ -64,9 +67,25 @@ export async function GET(request: Request) {
       publishableKeyMode: supabase.publishableKeyMode,
       secretKeyMode: supabase.secretKeyMode
     },
-    readiness: { aiConfigured, aiProvider: ai.activeProvider, aiModel: ai.model, aiPricingConfigured: ai.pricingConfigured, authConfigured, paymentConfigured },
+    readiness: {
+      aiConfigured,
+      aiProvider: ai.activeProvider,
+      aiModel: ai.model,
+      aiPricingConfigured: ai.pricingConfigured,
+      sportsPricingConfigured: sportsPricing.configured && sportsPricing.costs.length > 0,
+      authConfigured,
+      paymentConfigured
+    },
     productionWarningCount: config.productionWarnings.length,
-    paidTrafficReady: config.providerMode === "live" && config.liveCostsEnabled && aiConfigured && ai.pricingConfigured && authConfigured && paymentConfigured && matchProviders.length >= 2,
+    paidTrafficReady: config.providerMode === "live"
+      && config.liveCostsEnabled
+      && aiConfigured
+      && ai.pricingConfigured
+      && sportsPricing.configured
+      && sportsPricing.costs.length >= 2
+      && authConfigured
+      && paymentConfigured
+      && matchProviders.length >= 2,
     timestamp: new Date().toISOString()
   });
 }

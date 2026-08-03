@@ -137,13 +137,16 @@ export async function recordAiUsage(record: AiUsageRecord) {
 }
 
 export async function updateAiUsageCharge(jobId: string, userId: string, userChargeCents: number) {
-  const { error } = await serviceClient()
+  const { data, error } = await serviceClient()
     .from("football_ai_usage")
     .update({ user_charge_cents: Math.max(0, Math.trunc(userChargeCents)) })
     .eq("job_id", jobId)
     .eq("user_id", userId)
-    .eq("status", "completed");
+    .eq("status", "completed")
+    .select("job_id")
+    .maybeSingle();
   if (error) throw new Error(`AI usage settlement update failed: ${error.code}`);
+  if (!data) throw new Error("AI usage settlement update failed: usage row not found");
 }
 
 export function aiErrorCode(error: unknown) {

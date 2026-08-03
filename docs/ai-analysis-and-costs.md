@@ -56,18 +56,21 @@ required before platform-paid predictions are allowed.
 2. Apply the Supabase SQL and verify `football_ai_usage` exists.
 3. Configure one AI provider and its current CNY prices.
 4. Configure at least two structured sports-data providers.
-5. Verify Supabase authentication, Stripe webhook delivery, and refunds.
-6. Run `pnpm production:check` with the intended production variables.
-7. Set `PROVIDER_MODE=live` for BYOK testing while keeping platform charging off.
-8. Run one low-value BYOK prediction and verify token telemetry.
-9. Only then set `LIVE_COSTS_ENABLED=true` and run a low-value platform order.
+5. Configure each active provider's `*_MATCH_REFRESH_COST_CENTS`. Use the
+   contracted or internally allocated cost of one complete match refresh;
+   explicitly enter `0` only when the refresh is genuinely free.
+6. Verify Supabase authentication, Stripe webhook delivery, and refunds.
+7. Run `pnpm production:check` with the intended production variables.
+8. Set `PROVIDER_MODE=live` for BYOK testing while keeping platform charging off.
+9. Run one low-value BYOK prediction and verify token telemetry.
+10. Only then set `LIVE_COSTS_ENABLED=true` and run a low-value platform order.
 
 ## Cost meanings
 
 - `model_cost_cents`: calculated from model-reported token usage and the stored
   rate snapshot. It is nullable when prices have not been configured.
-- `sports_data_cost_cents`: the configured cost attributed to uncached sports
-  data for the request.
+- `sports_data_cost_cents`: the sum of configured per-refresh costs for every
+  provider attempted by an uncached request. Cached data has zero refresh cost.
 - `platform_cost_cents`: cost borne by the platform. In BYOK mode this excludes
   the user's direct OpenAI charge.
 - `user_charge_cents`: the amount settled by this product. It is zero for BYOK.

@@ -2,6 +2,7 @@ import { ApiFootballError, getApiFootballMatchIntelligence, isApiFootballConfigu
 import { FootballDataError, getFootballDataMatchIntelligence, isFootballDataConfigured } from "./football-data";
 import { AnySportError, getAnySportMatchIntelligence, isAnySportConfigured } from "./anysport";
 import { getSportmonksMatchIntelligence, isSportmonksConfigured, SportmonksError, type LiveMatchIntelligence } from "./sportmonks";
+import { canonicalMatchIdentity, canonicalTeamIdentity, normalizeFootballIdentity } from "../match-identities";
 
 type ResolveInput = { teamA: string; teamB: string; matchDate: string; fixtureId?: string };
 export type MatchProviderId = LiveMatchIntelligence["provider"];
@@ -26,7 +27,7 @@ const inFlightRequests = globalRequests.__footballMatchRequests ?? new Map<strin
 globalRequests.__footballMatchRequests = inFlightRequests;
 
 function normalized(value: string) {
-  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
+  return normalizeFootballIdentity(value);
 }
 
 function richness(data: LiveMatchIntelligence) {
@@ -57,6 +58,10 @@ function mergeUnique<T>(rows: T[], key: (row: T) => string) {
     seen.add(value);
     return true;
   });
+}
+
+function canonicalTeamId(data: LiveMatchIntelligence, teamId: number, primary: LiveMatchIntelligence) {
+  return canonicalTeamIdentity(data.teams, teamId, primary.teams);
 }
 
 export function fuseMatchIntelligence(
@@ -104,7 +109,10 @@ export function fuseMatchIntelligence(
   });
 
   const playerProfiles = mergeUnique(
-    results.flatMap((data) => data.playerProfiles ?? []),
+    results.flatMap((data) => (data.playerProfiles ?? []).map((profile) => ({
+      ...profile,
+      teamId: canonicalTeamId(data, profile.teamId, primary)
+    }))),
     (profile) => `${profile.teamId}:${normalized(profile.playerName)}:${profile.season ?? ""}`
   );
   const sidelined = mergeUnique(
@@ -113,13 +121,13 @@ export function fuseMatchIntelligence(
   );
   const recentMatches = mergeUnique(
     results.flatMap((data) => data.recentMatches ?? []),
-    (entry) => `${entry.source}:${entry.fixtureId}`
+    canonicalMatchIdentity
   );
   const headToHeadMatches = mergeUnique(
     results.flatMap((data) => data.headToHeadMatches ?? []),
-    (entry) => `${entry.source}:${entry.fixtureId}`
+    canonicalMatchIdentity
   );
-  const injurySourceCount = results.filter((data) => data.evidence.some((entry) => entry.field === "injuries" || entry.field === "sidelined")).length;
+  const injurySourceCount = results.filter((data) => data.analysisFeatures.injurySourceCount > 0).length;
   const criticalConflicts = conflicts.filter((entry) => entry.severity === "critical").length;
 
   return {

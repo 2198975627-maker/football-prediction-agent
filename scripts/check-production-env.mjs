@@ -25,6 +25,12 @@ const providers = [
   process.env.FOOTBALL_DATA_API_KEY?.trim() ? "football-data-org" : "",
   process.env.ANYSPORT_API_KEY?.trim() ? "anysport" : ""
 ].filter(Boolean);
+const sportsPricingVariables = {
+  "api-football": "API_FOOTBALL_MATCH_REFRESH_COST_CENTS",
+  sportmonks: "SPORTMONKS_MATCH_REFRESH_COST_CENTS",
+  "football-data-org": "FOOTBALL_DATA_MATCH_REFRESH_COST_CENTS",
+  anysport: "ANYSPORT_MATCH_REFRESH_COST_CENTS"
+};
 const missing = [
   ...required.filter((name) => !process.env[name]?.trim()),
   ...requiredAlternatives
@@ -61,6 +67,16 @@ if (activeAiProvider) {
 if (process.env.PROVIDER_MODE !== "live") issues.push("PROVIDER_MODE must be live");
 if (process.env.LIVE_COSTS_ENABLED !== "true") issues.push("LIVE_COSTS_ENABLED must be true");
 if (providers.length < 2) issues.push("at least two structured match providers are required for injury cross-checking");
+if (process.env.LIVE_COSTS_ENABLED === "true") {
+  for (const provider of providers) {
+    const variable = sportsPricingVariables[provider];
+    const raw = process.env[variable]?.trim();
+    const value = Number(raw);
+    if (raw === undefined || raw === "" || !Number.isInteger(value) || value < 0) {
+      issues.push(`${variable} must be an explicit non-negative integer CNY-cent cost`);
+    }
+  }
+}
 if (process.env.NEXT_PUBLIC_APP_URL && !/^https:\/\//i.test(process.env.NEXT_PUBLIC_APP_URL)) issues.push("NEXT_PUBLIC_APP_URL must use HTTPS in production");
 
 if (missing.length || issues.length) {
