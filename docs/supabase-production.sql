@@ -270,3 +270,45 @@ create policy "Service manages prediction jobs" on public.football_prediction_jo
 grant select on public.football_payment_orders, public.football_ledger, public.football_prediction_jobs to authenticated;
 grant all on public.football_payment_orders, public.football_webhook_events, public.football_prediction_jobs to service_role;
 grant select, insert on public.football_ledger to service_role;
+
+-- Privacy-safe AI usage and cost telemetry. Prompts, API keys and full model
+-- responses are deliberately excluded. Rates are stored as a per-call snapshot
+-- so later price changes do not rewrite historical costs.
+create table if not exists public.football_ai_usage (
+  id bigint generated always as identity primary key,
+  job_id uuid not null unique,
+  user_id uuid not null references auth.users(id) on delete restrict,
+  order_id uuid references public.football_payment_orders(id) on delete restrict,
+  billing_mode text not null check (billing_mode in ('byok','platform')),
+  provider text not null check (provider in ('openai','hunyuan')),
+  model text not null,
+  response_id text,
+  status text not null check (status in ('completed','failed')),
+  input_tokens bigint not null default 0 check (input_tokens >= 0),
+  cached_input_tokens bigint not null default 0 check (cached_input_tokens >= 0),
+  output_tokens bigint not null default 0 check (output_tokens >= 0),
+  reasoning_tokens bigint not null default 0 check (reasoning_tokens >= 0),
+  total_tokens bigint not null default 0 check (total_tokens >= 0),
+  input_rate_cents_per_million numeric(14,6),
+  cached_input_rate_cents_per_million numeric(14,6),
+  output_rate_cents_per_million numeric(14,6),
+  model_cost_cents numeric(16,6),
+  sports_data_cost_cents integer not null default 0 check (sports_data_cost_cents >= 0),
+  platform_cost_cents integer not null default 0 check (platform_cost_cents >= 0),
+  user_charge_cents integer not null default 0 check (user_charge_cents >= 0),
+  latency_ms integer not null default 0 check (latency_ms >= 0),
+  error_code text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists football_ai_usage_user_idx on public.football_ai_usage(user_id, created_at desc);
+create index if not exists football_ai_usage_provider_idx on public.football_ai_usage(provider, model, created_at desc);
+alter table public.football_ai_usage enable row level security;
+drop policy if exists "Users read own football AI usage" on public.football_ai_usage;
+create policy "Users read own football AI usage" on public.football_ai_usage
+  for select to authenticated using (auth.uid() = user_id);
+drop policy if exists "Service manages football AI usage" on public.football_ai_usage;
+create policy "Service manages football AI usage" on public.football_ai_usage
+  for all to service_role using (true) with check (true);
+grant select on public.football_ai_usage to authenticated;
+grant all on public.football_ai_usage to service_role;

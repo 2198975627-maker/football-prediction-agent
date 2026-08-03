@@ -20,7 +20,7 @@ For mainland China users, read `docs/mainland-production.md` first. Do not enabl
 4. Create a Stripe account, complete business verification, and create a webhook for `https://YOUR_DOMAIN/api/payments/webhook` listening to `checkout.session.completed`.
 5. Choose the platform AI provider:
    - Mainland: create a Tencent TokenHub key and configure `AI_PROVIDER=hunyuan`, `HUNYUAN_API_KEY`, `HUNYUAN_MODEL=hy3`, and current TokenHub token prices.
-   - Overseas: configure `AI_PROVIDER=openai`, `OPENAI_API_KEY`, and current OpenAI token prices. The OpenAI path uses the Responses API with Structured Outputs and `store: false`.
+   - Overseas: configure `AI_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL=gpt-5.6-terra`, and current OpenAI token prices. The OpenAI path uses the Responses API with Structured Outputs, `store: false`, and a privacy-preserving safety identifier.
 6. Create Upstash Redis and configure both REST variables for distributed rate limiting.
 
 ## Required production switches
@@ -48,6 +48,8 @@ Keep `LIVE_COSTS_ENABLED=false` until Stripe webhook delivery has been verified 
 2. Stripe webhook signature is verified and the event ID is stored idempotently.
 3. A paid order is atomically changed to `processing` before the model call.
 4. Actual model token cost is calculated server-side and multiplied by `BILLING_MARKUP_MULTIPLIER`.
+   The pricing snapshot, input/output/cache/reasoning token counts, model cost,
+   sports-data cost, and user charge are written to `football_ai_usage`.
 5. Unused prepaid authorization is refunded through Stripe.
 6. The append-only ledger stores payment, charge, and refund entries.
 

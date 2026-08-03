@@ -92,12 +92,14 @@ export async function runOpenAiPrediction(
   data: LiveMatchIntelligence,
   quality: MatchDataQuality,
   apiKey: string,
-  model = process.env.OPENAI_MODEL?.trim() || "gpt-5.4-mini"
+  model = process.env.OPENAI_MODEL?.trim() || "gpt-5.6-terra",
+  options: { safetyIdentifier?: string } = {}
 ) {
   const client = new OpenAI({ apiKey });
   const response = await client.responses.create({
     model,
     store: false,
+    ...(options.safetyIdentifier ? { safety_identifier: options.safetyIdentifier } : {}),
     reasoning: { effort: input.analysisDepth === "deep" ? "medium" : "low" },
     max_output_tokens: input.analysisDepth === "deep" ? 5000 : 3000,
     instructions: [
@@ -115,7 +117,9 @@ export async function runOpenAiPrediction(
     result: normalizePredictionProbabilities(parsed),
     usage: {
       inputTokens: response.usage?.input_tokens ?? 0,
+      cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
       outputTokens: response.usage?.output_tokens ?? 0,
+      reasoningTokens: response.usage?.output_tokens_details?.reasoning_tokens ?? 0,
       totalTokens: response.usage?.total_tokens ?? 0
     },
     model: response.model,

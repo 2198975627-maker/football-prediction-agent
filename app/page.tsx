@@ -190,6 +190,17 @@ type ActiveModal =
 
 type AccountUser = { id: string; email?: string };
 
+type AccountCostSummary = {
+  periodDays: number;
+  requestCount: number;
+  completedCount: number;
+  failedCount: number;
+  totalTokens: number;
+  modelCostCents: number;
+  platformCostCents: number;
+  userChargeCents: number;
+};
+
 type LiveImportStatus = {
   loading: boolean;
   message: string | null;
@@ -1200,6 +1211,11 @@ function currency(cents: number) {
   return `¥${(cents / 100).toFixed(2)}`;
 }
 
+function preciseCurrency(cents: number) {
+  const yuan = cents / 100;
+  return `¥${yuan.toFixed(yuan > 0 && yuan < 0.01 ? 4 : 2)}`;
+}
+
 function unique(values: string[]) {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, "zh-CN"));
 }
@@ -2202,6 +2218,7 @@ export default function Home() {
   const [accountEmail, setAccountEmail] = useState("");
   const [accountPassword, setAccountPassword] = useState("");
   const [accountMessage, setAccountMessage] = useState<string | null>(null);
+  const [accountCostSummary, setAccountCostSummary] = useState<AccountCostSummary | null>(null);
   const [byokKey, setByokKey] = useState("");
   const [paymentOrderId, setPaymentOrderId] = useState<string | null>(null);
   const [runtimeMode, setRuntimeMode] = useState<"mock" | "live">("mock");
@@ -2355,6 +2372,21 @@ export default function Home() {
       setAccountMessage("支付已返回，系统将以Stripe Webhook最终确认结果为准。");
     }
   }, []);
+
+  useEffect(() => {
+    if (!accountUser) {
+      setAccountCostSummary(null);
+      return;
+    }
+    const controller = new AbortController();
+    void fetch("/api/costs/summary?days=30", { signal: controller.signal })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.ok) setAccountCostSummary(data.summary);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [accountUser]);
 
   useEffect(() => {
     if (autoBadgeImportStarted.current) return;
@@ -4076,9 +4108,35 @@ export default function Home() {
             </div>
             <div className="panel-body">
               {result ? (
-                <article className="report" aria-live="polite">
-                  {reportNodes(result.report)}
-                </article>
+                <>
+                  {result.cost.actual ? (
+                    <div className="ai-cost-summary" aria-label="本次 AI 用量与成本">
+                      <div>
+                        <span>分析模型</span>
+                        <strong>{result.cost.actual.model}</strong>
+                        <small>{result.cost.actual.aiProvider === "openai" ? "OpenAI Responses API" : "腾讯混元兼容 API"}</small>
+                      </div>
+                      <div>
+                        <span>Token 用量</span>
+                        <strong>{result.cost.actual.totalTokens.toLocaleString("zh-CN")}</strong>
+                        <small>输入 {result.cost.actual.inputTokens.toLocaleString("zh-CN")} / 输出 {result.cost.actual.outputTokens.toLocaleString("zh-CN")}</small>
+                      </div>
+                      <div>
+                        <span>模型成本</span>
+                        <strong>{result.cost.actual.modelCostCents === null ? "价格未配置" : preciseCurrency(result.cost.actual.modelCostCents)}</strong>
+                        <small>缓存输入 {result.cost.actual.cachedInputTokens.toLocaleString("zh-CN")} Token</small>
+                      </div>
+                      <div>
+                        <span>实际结算</span>
+                        <strong>{result.billingMode === "platform" ? currency(result.cost.actual.userChargeCents) : "BYOK"}</strong>
+                        <small>体育数据 {currency(result.cost.actual.sportsDataCostCents)}</small>
+                      </div>
+                    </div>
+                  ) : null}
+                  <article className="report" aria-live="polite">
+                    {reportNodes(result.report)}
+                  </article>
+                </>
               ) : (
                 <div className="empty-report">
                   <FileText size={34} aria-hidden="true" />
@@ -4199,6 +4257,14 @@ export default function Home() {
                 {accountUser ? (
                   <>
                     <div className="confirm-summary"><div><span>当前账户</span><strong>{accountUser.email}</strong></div></div>
+                    {accountCostSummary ? (
+                      <div className="account-cost-summary">
+                        <div><span>近 {accountCostSummary.periodDays} 天分析</span><strong>{accountCostSummary.completedCount} 次</strong></div>
+                        <div><span>Token 总量</span><strong>{accountCostSummary.totalTokens.toLocaleString("zh-CN")}</strong></div>
+                        <div><span>模型成本</span><strong>{preciseCurrency(accountCostSummary.modelCostCents)}</strong></div>
+                        <div><span>实际支付</span><strong>{currency(accountCostSummary.userChargeCents)}</strong></div>
+                      </div>
+                    ) : null}
                     <button className="btn btn-secondary full" type="button" onClick={() => void signOut()}>退出登录</button>
                   </>
                 ) : (

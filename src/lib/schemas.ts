@@ -29,6 +29,7 @@ export type CostBreakdown = {
 
 export type CostEstimate = {
   providerMode: "mock" | "live";
+  status?: "estimate" | "actual";
   estimatedApiCostCents: number;
   estimatedUserChargeCents: number;
   minimumChargeCents: number;
@@ -36,6 +37,21 @@ export type CostEstimate = {
   currency: "CNY";
   breakdown: CostBreakdown;
   notes: string[];
+  actual?: {
+    aiProvider: "openai" | "hunyuan";
+    model: string;
+    pricingConfigured: boolean;
+    inputTokens: number;
+    cachedInputTokens: number;
+    outputTokens: number;
+    reasoningTokens: number;
+    totalTokens: number;
+    modelCostCents: number | null;
+    sportsDataCostCents: number;
+    platformCostCents: number;
+    userChargeCents: number;
+    currency: "CNY";
+  };
 };
 
 export type WorkflowStep = {
@@ -54,5 +70,6 @@ export type PredictionResponse = {
   report: string;
   generatedAt: string;
   model?: string;
+  aiProvider?: "openai" | "hunyuan";
   dataQualityScore?: number;
 };

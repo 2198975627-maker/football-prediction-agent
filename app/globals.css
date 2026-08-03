@@ -3177,6 +3177,40 @@ button {
   padding: 16px;
 }
 
+.ai-cost-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.ai-cost-summary > div {
+  min-width: 0;
+  padding: 11px 12px;
+  border-right: 1px solid var(--line);
+}
+
+.ai-cost-summary > div:last-child {
+  border-right: 0;
+}
+
+.ai-cost-summary span,
+.ai-cost-summary small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ai-cost-summary strong {
+  display: block;
+  margin: 5px 0 3px;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
 .report-actions {
   display: flex;
   align-items: center;
@@ -3405,6 +3439,34 @@ button {
   display: block;
   margin-top: 6px;
   font-size: 18px;
+}
+
+.account-cost-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.account-cost-summary div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8faf9;
+}
+
+.account-cost-summary span,
+.account-cost-summary strong {
+  display: block;
+}
+
+.account-cost-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.account-cost-summary strong {
+  margin-top: 5px;
+  font-size: 16px;
 }
 
 .modal-note {
@@ -3746,6 +3808,8 @@ button {
   .cost-grid,
   .detail-grid,
   .confirm-summary,
+  .ai-cost-summary,
+  .account-cost-summary,
   .live-import-card,
   .official-source-head,
   .official-source-summary,

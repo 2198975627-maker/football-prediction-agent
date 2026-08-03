@@ -3,6 +3,7 @@ import { serviceClient } from "./supabase-auth";
 import { getSupabaseSettings } from "./supabase-config";
 import type { AiProvider } from "./ai-provider";
 import type { PredictionInput } from "./schemas";
+import { calculateAiModelCost } from "./ai-costs";
 
 export type PaymentOrder = {
   id: string;
@@ -174,13 +175,15 @@ export async function settleOrder(
 }
 
 export function modelCostCents(provider: AiProvider, inputTokens: number, outputTokens: number) {
-  const prefix = provider === "hunyuan" ? "HUNYUAN" : "OPENAI";
-  const inputRate = Number(process.env[`${prefix}_INPUT_CENTS_PER_MILLION`]);
-  const outputRate = Number(process.env[`${prefix}_OUTPUT_CENTS_PER_MILLION`]);
-  if (!Number.isFinite(inputRate) || inputRate <= 0 || !Number.isFinite(outputRate) || outputRate <= 0) {
-    throw new Error(`${prefix} model pricing is not configured.`);
-  }
-  return Math.max(0, Math.ceil(inputTokens / 1_000_000 * inputRate + outputTokens / 1_000_000 * outputRate));
+  const cost = calculateAiModelCost(provider, {
+    inputTokens,
+    cachedInputTokens: 0,
+    outputTokens,
+    reasoningTokens: 0,
+    totalTokens: inputTokens + outputTokens
+  });
+  if (!cost.pricing.configured) throw new Error(`${provider} model pricing is not configured.`);
+  return cost.billedModelCostCents;
 }
 
 export async function reconcilePendingRefunds(limit = 10) {

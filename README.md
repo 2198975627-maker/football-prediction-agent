@@ -49,6 +49,7 @@ The agent must not be positioned as:
 - `docs/workflow.md`: safe workflow nodes from input to report and billing settlement.
 - `docs/api-key-security.md`: API key handling rules for platform mode and user-owned key mode.
 - `docs/funds-safety.md`: payment, balance, refund, idempotency, and cost-settlement rules.
+- `docs/ai-analysis-and-costs.md`: real AI providers, token telemetry, pricing snapshots, and activation steps.
 - `docs/web-api-security.md`: web/API security checklist based on OWASP-style controls.
 - `docs/live-sportmonks-integration.md`: server-only fixture, lineup, injury, event, and statistic integration.
 - `skills/*.md`: project skills the agent can execute as internal capabilities.
@@ -114,10 +115,15 @@ Available API routes:
 - `POST /api/live-team`
 - `POST /api/player-events`
 - `GET /api/sports-data-sources`
+- `GET /api/costs/summary` (authenticated)
 
 ## Deployment
 
-The project is deployed as a safe public preview. Keep `PROVIDER_MODE=mock` and `LIVE_COSTS_ENABLED=false` until real AI calls, payment authorization, webhook verification, and cost settlement are implemented.
+The project is deployed as a safe public preview. Real AI calls, token accounting,
+payment authorization, webhook verification, refunds, and cost settlement are
+implemented, but production charging must remain disabled until provider keys,
+current prices, the latest Supabase SQL, and a low-value end-to-end order have
+been verified.
 
 Start with `docs/deployment.md` for Vercel and Docker steps.
 

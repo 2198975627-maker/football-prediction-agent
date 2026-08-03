@@ -9,6 +9,7 @@ import {
 } from "./openai-prediction";
 import type { PredictionInput } from "./schemas";
 import type { LiveMatchIntelligence } from "./providers/sportmonks";
+import { getAiPricingSnapshot } from "./ai-costs";
 
 export type AiProvider = "openai" | "hunyuan";
 
@@ -40,7 +41,7 @@ export function getConfiguredAiProvider(): AiProviderConfig | null {
     return {
       provider: "openai",
       apiKey: openAiKey,
-      model: env("OPENAI_MODEL", "gpt-5.4-mini")
+      model: env("OPENAI_MODEL", "gpt-5.6-terra")
     };
   }
   return null;
@@ -59,10 +60,7 @@ export function getAiProviderStatus() {
 }
 
 export function isAiPricingConfigured(provider: AiProvider) {
-  const prefix = provider === "hunyuan" ? "HUNYUAN" : "OPENAI";
-  const inputRate = Number(env(`${prefix}_INPUT_CENTS_PER_MILLION`));
-  const outputRate = Number(env(`${prefix}_OUTPUT_CENTS_PER_MILLION`));
-  return Number.isFinite(inputRate) && inputRate > 0 && Number.isFinite(outputRate) && outputRate > 0;
+  return getAiPricingSnapshot(provider).configured;
 }
 
 async function runHunyuanPrediction(
@@ -101,7 +99,9 @@ async function runHunyuanPrediction(
     result: normalizePredictionProbabilities(parsed),
     usage: {
       inputTokens: completion.usage?.prompt_tokens ?? 0,
+      cachedInputTokens: completion.usage?.prompt_tokens_details?.cached_tokens ?? 0,
       outputTokens: completion.usage?.completion_tokens ?? 0,
+      reasoningTokens: completion.usage?.completion_tokens_details?.reasoning_tokens ?? 0,
       totalTokens: completion.usage?.total_tokens ?? 0
     },
     model: completion.model,
@@ -114,9 +114,10 @@ export async function runAiPrediction(
   input: PredictionInput,
   data: LiveMatchIntelligence,
   quality: MatchDataQuality,
-  config: AiProviderConfig
+  config: AiProviderConfig,
+  options: { safetyIdentifier?: string } = {}
 ) {
   if (config.provider === "hunyuan") return runHunyuanPrediction(input, data, quality, config);
-  const generated = await runOpenAiPrediction(input, data, quality, config.apiKey, config.model);
+  const generated = await runOpenAiPrediction(input, data, quality, config.apiKey, config.model, options);
   return { ...generated, aiProvider: "openai" as const };
 }

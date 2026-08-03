@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { assertBillingGate, estimateCost } from "@/src/lib/billing";
 import { readLimitedJson, RequestBodyTooLargeError } from "@/src/lib/http-security";
@@ -21,7 +21,13 @@ import {
   runAiPrediction,
   type AiProviderConfig
 } from "@/src/lib/ai-provider";
-import { claimPaidOrder, modelCostCents, releaseOrder, settleOrder } from "@/src/lib/payments";
+import {
+  aiErrorCode,
+  calculateAiModelCost,
+  recordAiUsage,
+  updateAiUsageCharge
+} from "@/src/lib/ai-costs";
+import { claimPaidOrder, releaseOrder, settleOrder } from "@/src/lib/payments";
 import { requestUser } from "@/src/lib/supabase-auth";
 import { baseWorkflowSteps, findSafetyIssue, markComplete } from "@/src/lib/safety";
 
@@ -89,7 +95,7 @@ export async function POST(request: Request) {
     aiConfig = {
       provider: "openai",
       apiKey,
-      model: process.env.OPENAI_MODEL?.trim() || "gpt-5.4-mini"
+      model: process.env.OPENAI_MODEL?.trim() || "gpt-5.6-terra"
     };
   } else {
     if (!config.liveCostsEnabled) {
@@ -114,6 +120,10 @@ export async function POST(request: Request) {
   }
 
   const jobId = randomUUID();
+  const safetyIdentifier = createHash("sha256").update(user.id).digest("hex");
+  let aiAttempted = false;
+  let aiFinished = false;
+  let aiStartedAt = Date.now();
   try {
     const cacheKey = matchIntelligenceCacheKey(input);
     let cached = await readMatchIntelligenceCache(cacheKey, 30 * 60_000);
@@ -142,11 +152,15 @@ export async function POST(request: Request) {
       }, { status: 422 });
     }
 
-    const generated = await runAiPrediction(input, matchData, quality, aiConfig);
+    aiAttempted = true;
+    aiStartedAt = Date.now();
+    const generated = await runAiPrediction(input, matchData, quality, aiConfig, { safetyIdentifier });
+    aiFinished = true;
+    const aiCost = calculateAiModelCost(generated.aiProvider, generated.usage);
     const sportsDataCostCents = usedPaidSportsData ? estimate.breakdown.sportsDataCents : 0;
-    const actualApiCostCents = input.billingMode === "platform"
-      ? sportsDataCostCents + modelCostCents(generated.aiProvider, generated.usage.inputTokens, generated.usage.outputTokens)
-      : 0;
+    const combinedApiCostCents = sportsDataCostCents + aiCost.billedModelCostCents;
+    const actualApiCostCents = sportsDataCostCents
+      + (input.billingMode === "platform" ? aiCost.billedModelCostCents : 0);
     const calculatedCharge = Math.max(
       Math.ceil(actualApiCostCents * config.billingMarkupMultiplier),
       config.minimumChargeCents
@@ -154,6 +168,37 @@ export async function POST(request: Request) {
     const chargedCents = input.billingMode === "platform"
       ? Math.min(calculatedCharge, input.maxUserChargeCents, order?.authorized_cents ?? calculatedCharge)
       : 0;
+
+    try {
+      await recordAiUsage({
+        jobId,
+        userId: user.id,
+        orderId: order?.id ?? null,
+        billingMode: input.billingMode,
+        provider: generated.aiProvider,
+        model: generated.model,
+        responseId: generated.responseId,
+        status: "completed",
+        usage: generated.usage,
+        pricing: aiCost.pricing,
+        modelCostCents: aiCost.modelCostCents,
+        sportsDataCostCents,
+        platformCostCents: actualApiCostCents,
+        userChargeCents: 0,
+        latencyMs: Date.now() - aiStartedAt,
+        metadata: {
+          matchProvider: matchData.provider,
+          dataQualityScore: quality.score,
+          sportsDataCacheHit: !usedPaidSportsData,
+          plannedUserChargeCents: chargedCents
+        }
+      });
+    } catch (usageError) {
+      console.error("Failed to persist completed AI usage", {
+        jobId,
+        error: usageError instanceof Error ? usageError.message : "unknown"
+      });
+    }
 
     let workflow = baseWorkflowSteps();
     workflow = markComplete(workflow, "validate-input", "输入与安全规则已通过。");
@@ -190,6 +235,14 @@ export async function POST(request: Request) {
         }
       );
       refundPending = settlement.refundPending;
+      try {
+        await updateAiUsageCharge(jobId, user.id, chargedCents);
+      } catch (usageError) {
+        console.error("Failed to update settled AI charge", {
+          jobId,
+          error: usageError instanceof Error ? usageError.message : "unknown"
+        });
+      }
     }
 
     return NextResponse.json({
@@ -201,11 +254,35 @@ export async function POST(request: Request) {
         cost: {
           ...estimate,
           providerMode: "live",
-          estimatedApiCostCents: actualApiCostCents,
+          status: "actual",
+          estimatedApiCostCents: combinedApiCostCents,
           estimatedUserChargeCents: chargedCents,
+          breakdown: {
+            sportsDataCents: sportsDataCostCents,
+            searchCents: 0,
+            extractionCents: 0,
+            modelCents: aiCost.billedModelCostCents
+          },
+          actual: {
+            aiProvider: generated.aiProvider,
+            model: generated.model,
+            pricingConfigured: aiCost.pricing.configured,
+            inputTokens: generated.usage.inputTokens,
+            cachedInputTokens: generated.usage.cachedInputTokens,
+            outputTokens: generated.usage.outputTokens,
+            reasoningTokens: generated.usage.reasoningTokens,
+            totalTokens: generated.usage.totalTokens,
+            modelCostCents: aiCost.modelCostCents,
+            sportsDataCostCents,
+            platformCostCents: actualApiCostCents,
+            userChargeCents: chargedCents,
+            currency: "CNY"
+          },
           notes: [
             usedPaidSportsData ? "已计入本次体育数据调用成本。" : "体育数据来自有效缓存，本次未重复计费。",
-            "已按实际模型 Token 用量计算。",
+            aiCost.pricing.configured
+              ? "已按模型返回的实际 Token 用量和本次价格快照计算。"
+              : "已记录实际 Token 用量；尚未配置 CNY 模型价格，因此不展示模型金额。",
             `计费倍率 ${config.billingMarkupMultiplier}x。`,
             ...(refundPending ? ["未使用额度退款正在处理，可在订单中查询状态。"] : [])
           ]
@@ -219,6 +296,26 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
+    if (aiAttempted && !aiFinished) {
+      try {
+        await recordAiUsage({
+          jobId,
+          userId: user.id,
+          orderId: order?.id ?? null,
+          billingMode: input.billingMode,
+          provider: aiConfig.provider,
+          model: aiConfig.model,
+          status: "failed",
+          latencyMs: Date.now() - aiStartedAt,
+          errorCode: aiErrorCode(error)
+        });
+      } catch (usageError) {
+        console.error("Failed to persist failed AI usage", {
+          jobId,
+          error: usageError instanceof Error ? usageError.message : "unknown"
+        });
+      }
+    }
     if (order) {
       try {
         await releaseOrder(order.id, error instanceof Error ? error.message : "prediction failed");
