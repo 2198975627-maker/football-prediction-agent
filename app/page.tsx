@@ -40,199 +40,35 @@ import {
   Workflow,
   Zap
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CostEstimate, PredictionResponse, WorkflowStep } from "@/src/lib/schemas";
+import type { TeamKind, TeamSlot, WorkspaceView, PlayerStatus, TeamProfile, FormState, FilterState, ProbabilitySummary, MatchupInsight, KeeperPenaltyInsight, TacticalChain, CoachProfile, ActiveModal, AccountUser, AccountCostSummary, LiveImportStatus, LiveTeamResponse, EventPlayerProfile, PlayerEventDataResponse, OfficialSourcesResponse, MatchIntelligenceResponse, FixtureProvider, ScheduledFixture, FixtureScheduleResponse } from "@/src/lib/workspace-ui-types";
+import { StructuredPredictionSummary } from "@/src/components/structured-prediction-summary";
+import { MockIntelligenceBrief } from "@/src/components/mock-intelligence-brief";
+import { ExperienceGateway, ImmersiveFieldLayer } from "@/src/components/experience-gateway";
+import { bilingualTerm, chinesePlayerName, chineseTeamName } from "@/src/lib/football-localization";
+import {
+  buildMockMatchIntelligence,
+  type MockTeamIntelligence
+} from "@/src/lib/mock-match-intelligence";
 
-type TeamKind = "club" | "national";
-type TeamSlot = "teamA" | "teamB";
-type TeamMode = "all" | TeamKind;
-type WorkspaceView = "teams" | "match" | "analysis" | "report";
-
-type PlayerStatus = {
-  name: string;
-  role: string;
-  status: "ready" | "doubt" | "injured" | "suspended";
-  form: number;
-  goals: number;
-  assists: number;
-  defense: number;
-  minutes: number;
-  avatarUrl?: string;
-  age?: number | null;
-  shirtNumber?: number | null;
-  heightCm?: number | null;
-  shotsOnTarget?: number | null;
-  saves?: number | null;
-  penaltiesTaken?: number | null;
-  penaltiesScored?: number | null;
-  penaltiesFaced?: number | null;
-  penaltySaves?: number | null;
-  metricsStatus?: "verified" | "placeholder" | "user-imported";
-  rosterStatus?: "provider" | "placeholder" | "user-imported";
-  note: string;
+const matchProviderLabels: Record<NonNullable<MatchIntelligenceResponse["provider"]>, string> = {
+  anysport: "AnySport",
+  "api-football": "API-Football",
+  sportmonks: "Sportmonks",
+  "football-data-org": "football-data.org"
 };
 
-type TeamProfile = {
-  id: string;
-  name: string;
-  kind: TeamKind;
-  league: string;
-  country: string;
-  continent: string;
-  tier: string;
-  badge: string;
-  badgeUrl?: string;
-  fanartUrl?: string;
-  stadium?: string;
-  stadiumCapacity?: number | null;
-  source?: string;
-  sourceTeamId?: string;
-  rosterUpdatedAt?: string | null;
-  coach?: {
-    id?: string;
-    name: string;
-    age?: number | null;
-    nationality?: string;
-    photoUrl?: string;
-    source?: string;
-    metricsStatus?: "verified" | "placeholder";
-    flexibility?: number | null;
-    substitution?: number | null;
-    gameState?: number | null;
-  } | null;
-  metricsStatus?: "verified" | "placeholder";
-  rosterStatus?: "provider" | "placeholder";
-  attack: number;
-  defense: number;
-  form: number;
-  fitness: number;
-  possession: number;
-  press: number;
-  injurySafety: number;
-  xgFor: number;
-  xgAgainst: number;
-  recent: string[];
-  players: PlayerStatus[];
+const fixtureProviderLabels: Record<FixtureProvider, string> = {
+  anysport: "AnySport",
+  "api-football": "API-Football",
+  "football-data-org": "football-data.org",
+  thesportsdb: "TheSportsDB 免费赛程",
+  openligadb: "OpenLigaDB 免费赛程",
+  "mock-offline": "本地演示赛程"
 };
 
-type FormState = {
-  teamA: string;
-  teamB: string;
-  matchDate: string;
-  competition: string;
-  homeTeam: "team_a" | "team_b" | "neutral";
-  analysisDepth: "standard" | "deep";
-  billingMode: "byok" | "platform";
-  maxUserChargeCents: number;
-};
-
-type FilterState = {
-  mode: TeamMode;
-  search: string;
-  league: string;
-  country: string;
-  continent: string;
-  tier: string;
-};
-
-type ProbabilitySummary = {
-  teamA: number;
-  draw: number;
-  teamB: number;
-  score: string;
-};
-
-type MatchupInsight = {
-  id: string;
-  title: string;
-  attacker: PlayerStatus;
-  defender: PlayerStatus;
-  attackValue: number;
-  defenseValue: number;
-  aerialEdge: number | null;
-  note: string;
-};
-
-type KeeperPenaltyInsight = {
-  keeper: PlayerStatus;
-  shooter: PlayerStatus;
-  saveValue: number;
-  shotValue: number;
-  penaltySave: number;
-  penaltyScore: number;
-};
-
-type TacticalChain = {
-  id: string;
-  trigger: string;
-  attackLabel: string;
-  defenseLabel: string;
-  attackValue: number;
-  defenseValue: number;
-  verdict: string;
-};
-
-type CoachProfile = {
-  teamName: string;
-  flexibility: number;
-  substitution: number;
-  gameState: number;
-  risk: string;
-};
-
-type ActiveModal =
-  | { type: "player"; player: PlayerStatus; team: TeamProfile }
-  | { type: "payment" }
-  | { type: "byok" }
-  | { type: "account" }
-  | { type: "importPlayers" }
-  | null;
-
-type AccountUser = { id: string; email?: string };
-
-type AccountCostSummary = {
-  periodDays: number;
-  requestCount: number;
-  completedCount: number;
-  failedCount: number;
-  totalTokens: number;
-  modelCostCents: number;
-  platformCostCents: number;
-  userChargeCents: number;
-};
-
-type LiveImportStatus = {
-  loading: boolean;
-  message: string | null;
-  error: string | null;
-};
-
-type LiveTeamResponse = {
-  ok: boolean;
-  error?: string;
-  importedAt?: string;
-  rawCount?: number;
-  storage?: "supabase" | "local";
-  notice?: string;
-  warning?: string;
-  source?: {
-    name: string;
-    url: string;
-    apiKeyMode: string;
-  };
-  snapshot?: {
-    generatedAt?: string;
-    beijingDate?: string;
-    totals?: {
-      teams?: number;
-      clubs?: number;
-      nationalTeams?: number;
-      players?: number;
-    };
-  };
-  changes?: unknown;
-  teams?: TeamProfile[];
-};
+const fixtureCompetitionFilters = ["", "英超", "西甲", "德甲", "意甲", "法甲", "中超", "沙特联", "美职联", "欧冠"] as const;
 
 function describeTeamImport(data: LiveTeamResponse, teams: TeamProfile[]) {
   const displayTeams = teams.map(localizeTeamMetadata);
@@ -240,225 +76,78 @@ function describeTeamImport(data: LiveTeamResponse, teams: TeamProfile[]) {
   const clubBadges = clubs.filter((team) => Boolean(team.badgeUrl)).length;
   const providerRosters = displayTeams.filter((team) => team.rosterStatus === "provider").length;
   const providerName = data.source?.name?.replace(/\s+Daily Cache$/i, "");
-  const source =
-    data.storage === "supabase"
-      ? `云端缓存${providerName ? ` · ${providerName}` : ""}`
-      : data.storage === "local"
-        ? "开发快照"
-        : data.source?.name ?? "联网数据源";
+  const source = data.storage === "supabase"
+    ? `云端缓存${providerName ? ` · ${providerName}` : ""}`
+    : data.storage === "local"
+      ? "开发快照"
+      : data.source?.name ?? "联网数据源";
   const updated = data.snapshot?.beijingDate ? ` · 更新 ${data.snapshot.beijingDate}` : "";
 
   return `${source} · ${teams.length} 支 · 俱乐部队徽 ${clubBadges}/${clubs.length} · 正式名单 ${providerRosters} 队${updated}`;
 }
 
-type EventHeatmapPoint = {
-  x: number;
-  y: number;
-  count: number;
-};
+function beijingDateValue() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
 
-type EventShotPoint = {
-  x: number;
-  y: number;
-  xg: number;
-  outcome: string;
-  bodyPart: string;
-};
+function beijingFixtureDate(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(date);
+  const fields = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${fields.year}-${fields.month}-${fields.day}`;
+}
 
-type EventPlayerProfile = {
-  playerId: string;
-  name: string;
-  team: string;
-  position: string;
-  heightCm: number | null;
-  preferredFoot: "left" | "right" | "both" | "unknown";
-  shots: number;
-  shotsOnTarget: number;
-  goals: number;
-  xg: number;
-  tackles: number;
-  tacklesWon: number;
-  blocks: number;
-  interceptions: number;
-  clearances: number;
-  dribblesAttempted: number;
-  dribblesCompleted: number;
-  dribbledPast: number;
-  saves: number;
-  shotsFaced: number;
-  penaltySaves: number;
-  penaltiesFaced: number;
-  penaltiesTaken: number;
-  penaltiesScored: number;
-  heatmap: EventHeatmapPoint[];
-  shotsMap: EventShotPoint[];
-};
+function fixtureDateLabel(value: string) {
+  const date = new Date(`${value}T00:00:00+08:00`);
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", weekday: "short"
+  }).format(date);
+}
 
-type EventKeeperZone = {
-  keeperId: string;
-  keeperName: string;
-  team: string;
-  shotsFaced: number;
-  saves: number;
-  penaltiesFaced: number;
-  penaltySaves: number;
-  zones: EventHeatmapPoint[];
-};
+function dateTimeLocalValue(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
 
-type PlayerEventDataResponse = {
-  ok: boolean;
-  error?: string;
-  provider?: string;
-  sourceName?: string;
-  sourceUrl?: string;
-  mode?: "historical-demo" | "live";
-  coverageTier?: "free-historical" | "free-live-summary" | "commercial-live-events";
-  capabilities?: string[];
-  missingCapabilities?: string[];
-  matchId?: string;
-  matchLabel?: string;
-  fetchedAt?: string;
-  teams?: string[];
-  players?: EventPlayerProfile[];
-  keeperZones?: EventKeeperZone[];
-  summary?: {
-    totalEvents: number;
-    shots: number;
-    shotsOnTarget: number;
-    goals: number;
-    xg: number;
-    dribblesAttempted: number;
-    dribblesCompleted: number;
-    dribbledPast: number;
-    tackles: number;
-    blocks: number;
-    interceptions: number;
-    saves: number;
-    penaltiesTaken: number;
-    penaltiesScored: number;
-    penaltySaves: number;
-  };
-  dataGaps?: string[];
-  notes?: string[];
-};
+function fixtureTime(value: string) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date)
+    : "--:--";
+}
 
-type OfficialSourceProvider = {
-  id: string;
-  name: string;
-  role: string;
-  configured: boolean;
-  runtimeStatus: "ready" | "needs-key" | "open-data-ready" | "prepared" | "contract-needed";
-  costModel: string;
-  capabilities: string[];
-  bestFor: string[];
-  limitations: string[];
-  missingEnvKeys: string[];
-  docsUrl: string;
-};
-
-type SportsAnalysisTool = {
-  id: string;
-  name: string;
-  role: string;
-  configured: boolean;
-  runtimeStatus: "prepared" | "enabled";
-  packageNames: string[];
-  capabilities: string[];
-  bestFor: string[];
-  limitations: string[];
-  docsUrl: string;
-};
-
-type OfficialFusionStage = {
-  id: string;
-  name: string;
-  description: string;
-  providers: string[];
-  requiredCapabilities: string[];
-};
-
-type OfficialSourcesResponse = {
-  ok: boolean;
-  error?: string;
-  strategy?: string;
-  generatedAt?: string;
-  configuredProviderCount?: number;
-  enabledToolCount?: number;
-  providers?: OfficialSourceProvider[];
-  analysisTools?: SportsAnalysisTool[];
-  fusionPlan?: OfficialFusionStage[];
-  warnings?: string[];
-};
-
-type MatchIntelligenceResponse = {
-  ok: boolean;
-  error?: string;
-  code?: string;
-  provider?: "api-football" | "sportmonks" | "football-data-org";
-  fetchedAt?: string;
-  fixture?: {
-    id: number;
-    name: string;
-    startsAt: string;
-    state: string;
-    league: string;
-    venue: string;
-  };
-  teams?: Array<{ id: number; name: string; shortCode: string; imageUrl: string }>;
-  lineups?: Array<{ playerId: number; teamId: number; playerName: string; starter: boolean }>;
-  sidelined?: Array<{ playerId: number | null; playerName: string; category: string }>;
-  events?: Array<{ id: number | null; type: string; minute: number | null }>;
-  teamStatistics?: Array<{ teamId: number | null; type: string; value: number | string | boolean | null }>;
-  coverage?: {
-    confirmedLineup: boolean;
-    lineups: number;
-    sidelined: number;
-    events: number;
-    teamStatistics: number;
-    hasWeather: boolean;
-    hasFormations: boolean;
-  };
-  cache?: {
-    status: "hit" | "miss" | "refreshed" | "stale";
-    storage: "memory" | "supabase";
-    updatedAt: string;
-    ageSeconds: number;
-  };
-  quality?: {
-    score: number;
-    level: "insufficient" | "partial" | "ready";
-    canRunPreliminaryAnalysis: boolean;
-    canRunOfficialPrediction: boolean;
-    minutesToKickoff: number | null;
-    checks: Array<{
-      id: string;
-      label: string;
-      passed: boolean;
-      required: boolean;
-      points: number;
-      detail: string;
-    }>;
-    missingRequired: string[];
-  };
-  warnings?: string[];
-};
-
-const matchProviderLabels: Record<NonNullable<MatchIntelligenceResponse["provider"]>, string> = {
-  "api-football": "API-Football",
-  sportmonks: "Sportmonks",
-  "football-data-org": "football-data.org"
-};
+function fixtureSearchText(fixture: ScheduledFixture) {
+  return [fixture.home.name, fixture.away.name, fixture.competition, fixture.country, fixture.round, fixture.venue]
+    .join(" ")
+    .toLowerCase();
+}
 
 const initialForm: FormState = {
   teamA: "Manchester City",
   teamB: "Real Madrid",
-  matchDate: "2026-07-12 20:00",
+  matchDate: "",
   competition: "俱乐部杯赛",
   homeTeam: "neutral",
   analysisDepth: "standard",
   billingMode: "platform",
   maxUserChargeCents: 300
 };
+
+function matchDateIssue(value: string) {
+  if (!value.trim()) return "请选择未来的比赛时间。";
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return "比赛时间格式无效。";
+  if (timestamp < Date.now() - 15 * 60_000) return "比赛已经开始或时间已过，请重新选择。";
+  return null;
+}
 
 const initialFilters: FilterState = {
   mode: "all",
@@ -816,33 +505,18 @@ const defaultWorkflow: WorkflowStep[] = [
   { id: "settlement", name: "成本结算", status: "pending", detail: "等待成本记录。" }
 ];
 
-function buildPlayers(seed: number): PlayerStatus[] {
-  const readiness: PlayerStatus["status"][] = ["ready", "ready", "ready", "doubt", "ready"];
-  const roles = [
-    ["核心前锋", "Forward", 7, 2, 36],
-    ["组织中场", "Midfielder", 2, 6, 58],
-    ["防守中场", "Midfielder", 1, 2, 78],
-    ["中后卫", "Defender", 1, 1, 86],
-    ["门将", "Goalkeeper", 0, 0, 72]
-  ] as const;
-
-  return roles.map(([name, role, goals, assists, defense], index) => ({
-    name,
-    role,
-    status: readiness[(seed + index) % readiness.length],
-    form: 62 + ((seed + index * 7) % 31),
-    goals: Math.max(0, goals + ((seed + index) % 3) - 1),
-    assists: Math.max(0, assists + ((seed + index * 2) % 3) - 1),
-    defense: Math.min(95, defense + ((seed + index * 5) % 9)),
-    minutes: 68 + ((seed + index * 9) % 28),
-    note:
-      index === 3 && seed % 2 === 0
-        ? "轻微疲劳，需关注赛前名单"
-        : index === 0
-          ? "近期参与进攻权重高"
-          : "状态稳定，可作为模型特征"
-  }));
-}
+const workflowEnglish: Record<string, { name: string; detail: string }> = {
+  "validate-input": { name: "Input Validation", detail: "Validate fixture parameters and timing." },
+  "billing-authorized": { name: "Billing Gate", detail: "Confirm billing mode and spending limit." },
+  "team-resolution": { name: "Team Resolution", detail: "Resolve canonical team and fixture IDs." },
+  "football-data": { name: "Structured Data", detail: "Load verified team, player and event data." },
+  "player-matchups": { name: "Player Matchups", detail: "Compare individual attack, defence, keeper and penalty evidence." },
+  "tactical-coach": { name: "Tactics & Coaches", detail: "Assess tactical counters and coaching adjustments." },
+  "public-research": { name: "Public Research", detail: "Collect attributable public information." },
+  "source-verification": { name: "Source Verification", detail: "Check freshness, conflicts and source confidence." },
+  prediction: { name: "Prediction", detail: "Generate evidence-grounded probabilities." },
+  settlement: { name: "Cost Settlement", detail: "Record actual model and provider costs." }
+};
 
 const teamCatalog: TeamProfile[] = [
   {
@@ -864,7 +538,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 2.28,
     xgAgainst: 0.94,
     recent: ["胜", "胜", "平", "胜", "负"],
-    players: buildPlayers(11)
+    players: []
   },
   {
     id: "club-rma",
@@ -885,7 +559,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 2.12,
     xgAgainst: 1.01,
     recent: ["胜", "平", "胜", "胜", "平"],
-    players: buildPlayers(17)
+    players: []
   },
   {
     id: "club-ars",
@@ -906,7 +580,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 1.95,
     xgAgainst: 0.89,
     recent: ["胜", "胜", "胜", "平", "负"],
-    players: buildPlayers(23)
+    players: []
   },
   {
     id: "club-liv",
@@ -927,7 +601,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 2.03,
     xgAgainst: 1.12,
     recent: ["胜", "负", "胜", "平", "胜"],
-    players: buildPlayers(31)
+    players: []
   },
   {
     id: "club-bay",
@@ -948,7 +622,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 2.21,
     xgAgainst: 1.05,
     recent: ["胜", "胜", "胜", "负", "平"],
-    players: buildPlayers(37)
+    players: []
   },
   {
     id: "club-psg",
@@ -969,7 +643,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 1.97,
     xgAgainst: 1.16,
     recent: ["平", "胜", "胜", "胜", "负"],
-    players: buildPlayers(43)
+    players: []
   },
   {
     id: "nat-arg",
@@ -990,7 +664,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 1.88,
     xgAgainst: 0.91,
     recent: ["胜", "胜", "胜", "平", "胜"],
-    players: buildPlayers(47)
+    players: []
   },
   {
     id: "nat-fra",
@@ -1011,7 +685,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 1.93,
     xgAgainst: 0.95,
     recent: ["胜", "平", "胜", "胜", "负"],
-    players: buildPlayers(53)
+    players: []
   },
   {
     id: "nat-bra",
@@ -1032,7 +706,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 1.74,
     xgAgainst: 1.08,
     recent: ["平", "负", "胜", "胜", "平"],
-    players: buildPlayers(59)
+    players: []
   },
   {
     id: "nat-eng",
@@ -1053,7 +727,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 1.82,
     xgAgainst: 0.98,
     recent: ["胜", "平", "负", "胜", "胜"],
-    players: buildPlayers(61)
+    players: []
   },
   {
     id: "nat-jpn",
@@ -1074,7 +748,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 1.48,
     xgAgainst: 1.02,
     recent: ["胜", "胜", "平", "胜", "胜"],
-    players: buildPlayers(67)
+    players: []
   },
   {
     id: "nat-chn",
@@ -1095,7 +769,7 @@ const teamCatalog: TeamProfile[] = [
     xgFor: 0.92,
     xgAgainst: 1.46,
     recent: ["负", "平", "胜", "负", "平"],
-    players: buildPlayers(71)
+    players: []
   }
 ];
 
@@ -1187,7 +861,7 @@ function createCatalogTeam(seedTeam: CatalogTeamSeed, index: number): TeamProfil
     xgFor: Number((1.05 + tierBoost / 18 + (seed % 72) / 100).toFixed(2)),
     xgAgainst: Number((0.78 + ((seed >> 3) % 76) / 100).toFixed(2)),
     recent: Array.from({ length: 5 }, (_, recentIndex) => ["胜", "平", "负", "胜", "胜"][(seed + recentIndex) % 5]),
-    players: buildPlayers(seed)
+    players: []
   };
 }
 
@@ -1389,7 +1063,35 @@ function mergeTeamCatalogs(liveTeams: TeamProfile[]) {
 function mergeLiveTeams(current: TeamProfile[], incoming: TeamProfile[]) {
   const map = new Map<string, TeamProfile>();
   [...current, ...incoming].forEach((team) => {
-    map.set(teamKey(team), team);
+    const key = teamKey(team);
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, team);
+      return;
+    }
+
+    const rosterScore = (candidate: TeamProfile) => {
+      const providerPlayers = candidate.players.filter(
+        (player) => player.rosterStatus === "provider" || player.rosterStatus === "user-imported"
+      );
+      return providerPlayers.length * 10
+        + providerPlayers.filter((player) => Boolean(player.avatarUrl?.trim())).length * 2
+        + providerPlayers.filter((player) => typeof player.heightCm === "number").length * 2
+        + providerPlayers.filter((player) => Boolean(player.nameZh?.trim())).length * 2;
+    };
+    const keepExistingRoster = rosterScore(existing) > rosterScore(team);
+    map.set(key, {
+      ...existing,
+      ...team,
+      badgeUrl: team.badgeUrl || existing.badgeUrl,
+      fanartUrl: team.fanartUrl || existing.fanartUrl,
+      stadium: team.stadium || existing.stadium,
+      stadiumCapacity: team.stadiumCapacity ?? existing.stadiumCapacity,
+      coach: team.coach ?? existing.coach,
+      players: keepExistingRoster ? existing.players : team.players,
+      rosterStatus: keepExistingRoster ? existing.rosterStatus : team.rosterStatus,
+      rosterUpdatedAt: keepExistingRoster ? existing.rosterUpdatedAt : team.rosterUpdatedAt
+    });
   });
   return Array.from(map.values());
 }
@@ -1420,7 +1122,7 @@ function fallbackTeam(name: string, slot: TeamSlot): TeamProfile {
     xgFor: 1.12 + (seed % 80) / 100,
     xgAgainst: 0.92 + (seed % 72) / 100,
     recent: ["待", "待", "待", "待", "待"],
-    players: buildPlayers(seed)
+    players: []
   };
 }
 
@@ -1436,6 +1138,15 @@ function extractNumber(report: string, label: string) {
 function extractSummary(result: PredictionResponse | null, form: FormState): ProbabilitySummary {
   if (!result) {
     return { teamA: 0, draw: 0, teamB: 0, score: "待生成" };
+  }
+
+  if (result.prediction) {
+    return {
+      teamA: result.prediction.probabilities.teamA,
+      draw: result.prediction.probabilities.draw,
+      teamB: result.prediction.probabilities.teamB,
+      score: result.prediction.likelyScores.join(" / ") || "待生成"
+    };
   }
 
   const teamA = extractNumber(result.report, `${form.teamA} 胜率`) ?? 0;
@@ -1538,6 +1249,7 @@ function normalizeImportedPlayer(row: Record<string, unknown>, index: number): P
 
   return {
     name,
+    nameZh: String(row.nameZh ?? row.chineseName ?? row["中文名"] ?? "").trim(),
     role,
     status,
     form: boundedNumber(row.form ?? row["状态分"], 70),
@@ -1591,7 +1303,9 @@ function parsePlayerImport(raw: string): PlayerStatus[] {
 
 function renderWorkflowIcon(status: WorkflowStep["status"]) {
   if (status === "complete") return <CheckCircle2 size={16} aria-hidden="true" />;
+  if (status === "simulated") return <Sparkles size={16} aria-hidden="true" />;
   if (status === "blocked") return <ShieldAlert size={16} aria-hidden="true" />;
+  if (status === "missing") return <AlertTriangle size={16} aria-hidden="true" />;
   return <CircleDashed size={16} aria-hidden="true" />;
 }
 
@@ -1717,6 +1431,43 @@ function PlayerAvatar({ player, size = "md" }: { player: PlayerStatus; size?: "s
   );
 }
 
+function UiBilingual({ zh, en, compact = false }: { zh: string; en: string; compact?: boolean }) {
+  return (
+    <span className={`ui-bilingual ${compact ? "compact" : ""}`}>
+      <span>{zh}</span>
+      <small>{en}</small>
+    </span>
+  );
+}
+
+function FootballName({
+  name,
+  type = "team",
+  translation: suppliedTranslation = ""
+}: {
+  name: string;
+  type?: "team" | "player";
+  translation?: string;
+}) {
+  const translation = type === "player" ? chinesePlayerName(name, suppliedTranslation) : chineseTeamName(name);
+  return (
+    <span className="football-name">
+      <span>{name}</span>
+      {translation ? <small>{translation}</small> : null}
+    </span>
+  );
+}
+
+function BilingualTerm({ value }: { value: string }) {
+  const translation = bilingualTerm(value);
+  return (
+    <span className="bilingual-term">
+      <span>{value}</span>
+      {translation ? <small>{translation}</small> : null}
+    </span>
+  );
+}
+
 function MetricBar({ label, value, tone = "green" }: { label: string; value: number; tone?: "green" | "blue" | "amber" }) {
   return (
     <div className="metric-bar">
@@ -1765,7 +1516,8 @@ function MatchVisualDashboard({
   probability,
   eventData,
   eventLoading,
-  onImportEvents
+  onImportEvents,
+  allowMockData = false
 }: {
   teamA: TeamProfile;
   teamB: TeamProfile;
@@ -1773,14 +1525,17 @@ function MatchVisualDashboard({
   eventData: PlayerEventDataResponse | null;
   eventLoading: boolean;
   onImportEvents: () => void;
+  allowMockData?: boolean;
 }) {
+  const predictionReady = probability.teamA + probability.draw + probability.teamB > 0;
   const drawEnd = probability.teamA + probability.draw;
   const eventSummary = eventData?.summary;
-  const metricsVerified = teamA.metricsStatus === "verified" && teamB.metricsStatus === "verified";
-  const teamAThreat = metricsVerified ? clampMetric(teamA.attack * 0.42 + teamA.press * 0.25 + teamA.xgFor * 12, 18, 88) : 0;
-  const teamBThreat = metricsVerified ? clampMetric(teamB.attack * 0.42 + teamB.press * 0.25 + teamB.xgFor * 12, 18, 88) : 0;
-  const teamABalance = metricsVerified ? clampMetric((teamA.attack + teamA.defense + teamA.form) / 3) : 0;
-  const teamBBalance = metricsVerified ? clampMetric((teamB.attack + teamB.defense + teamB.form) / 3) : 0;
+  const metricsAvailable = teamA.metricsStatus === "verified" && teamB.metricsStatus === "verified"
+    || allowMockData && teamA.metricsStatus === "mock" && teamB.metricsStatus === "mock";
+  const teamAThreat = metricsAvailable ? clampMetric(teamA.attack * 0.42 + teamA.press * 0.25 + teamA.xgFor * 12, 18, 88) : 0;
+  const teamBThreat = metricsAvailable ? clampMetric(teamB.attack * 0.42 + teamB.press * 0.25 + teamB.xgFor * 12, 18, 88) : 0;
+  const teamABalance = metricsAvailable ? clampMetric((teamA.attack + teamA.defense + teamA.form) / 3) : 0;
+  const teamBBalance = metricsAvailable ? clampMetric((teamB.attack + teamB.defense + teamB.form) / 3) : 0;
 
   return (
     <div className="visual-dashboard">
@@ -1788,26 +1543,28 @@ function MatchVisualDashboard({
         <div
           className="probability-donut"
           style={{
-            background: `conic-gradient(var(--green) 0 ${probability.teamA}%, var(--amber) ${probability.teamA}% ${drawEnd}%, var(--blue) ${drawEnd}% 100%)`
+            background: predictionReady
+              ? `conic-gradient(var(--green) 0 ${probability.teamA}%, var(--amber) ${probability.teamA}% ${drawEnd}%, var(--blue) ${drawEnd}% 100%)`
+              : "var(--surface-soft)"
           }}
         >
           <div>
-            <strong>{probability.teamA}%</strong>
+            <strong>{predictionReady ? `${probability.teamA}%` : "--"}</strong>
             <span>{teamA.name}</span>
           </div>
         </div>
         <div className="visual-legend">
           <span>
             <i className="green" />
-            {teamA.name} {probability.teamA}%
+            {teamA.name} {predictionReady ? `${probability.teamA}%` : "--"}
           </span>
           <span>
             <i className="amber" />
-            平局 {probability.draw}%
+            平局 {predictionReady ? `${probability.draw}%` : "--"}
           </span>
           <span>
             <i className="blue" />
-            {teamB.name} {probability.teamB}%
+            {teamB.name} {predictionReady ? `${probability.teamB}%` : "--"}
           </span>
         </div>
       </div>
@@ -1819,18 +1576,18 @@ function MatchVisualDashboard({
           <div className="pitch-axis" />
           <div className="pitch-team-chip left">
             <TeamBadge team={teamA} />
-            <span>{metricsVerified ? teamA.attack : "--"}</span>
+            <span>{metricsAvailable ? teamA.attack : "--"}</span>
           </div>
           <div className="pitch-team-chip right">
-            <span>{metricsVerified ? teamB.attack : "--"}</span>
+            <span>{metricsAvailable ? teamB.attack : "--"}</span>
             <TeamBadge team={teamB} />
           </div>
           <b>{probability.score}</b>
         </div>
         <div className="pitch-data-row">
-          <span>进攻势能 {metricsVerified ? `${teamA.attack} / ${teamB.attack}` : "待核验"}</span>
-          <span>压迫 {metricsVerified ? `${teamA.press} / ${teamB.press}` : "待核验"}</span>
-          <span>xG {metricsVerified ? `${teamA.xgFor.toFixed(2)} / ${teamB.xgFor.toFixed(2)}` : "待核验"}</span>
+          <span>进攻势能 {metricsAvailable ? `${teamA.attack} / ${teamB.attack}` : "待核验"}</span>
+          <span>压迫 {metricsAvailable ? `${teamA.press} / ${teamB.press}` : "待核验"}</span>
+          <span>xG {metricsAvailable ? `${teamA.xgFor.toFixed(2)} / ${teamB.xgFor.toFixed(2)}` : "待核验"}</span>
         </div>
       </div>
 
@@ -1848,12 +1605,12 @@ function MatchVisualDashboard({
         <div className="data-visual-bars">
           <div>
             <span>综合均衡</span>
-            <b>{metricsVerified ? teamABalance : "--"}</b>
+            <b>{metricsAvailable ? teamABalance : "--"}</b>
             <i style={{ width: `${teamABalance}%` }} />
           </div>
           <div>
             <span>对手均衡</span>
-            <b>{metricsVerified ? teamBBalance : "--"}</b>
+            <b>{metricsAvailable ? teamBBalance : "--"}</b>
             <i className="blue" style={{ width: `${teamBBalance}%` }} />
           </div>
           <div>
@@ -1869,6 +1626,44 @@ function MatchVisualDashboard({
       </div>
     </div>
   );
+}
+
+function mockRecentLabel(value: MockTeamIntelligence["recent"][number]) {
+  if (value === "W") return "胜";
+  if (value === "D") return "平";
+  return "负";
+}
+
+function applyMockTeamIntelligence(base: TeamProfile, intelligence: MockTeamIntelligence): TeamProfile {
+  return {
+    ...base,
+    metricsStatus: "mock",
+    rosterStatus: "placeholder",
+    source: "Mock scenario engine",
+    attack: intelligence.attack,
+    defense: intelligence.defense,
+    form: intelligence.form,
+    fitness: intelligence.fitness,
+    possession: intelligence.possession,
+    press: intelligence.press,
+    injurySafety: intelligence.injurySafety,
+    xgFor: intelligence.xgFor,
+    xgAgainst: intelligence.xgAgainst,
+    recent: intelligence.recent.map(mockRecentLabel),
+    players: intelligence.players.map((player) => ({
+      ...player,
+      metricsStatus: "mock",
+      rosterStatus: "placeholder"
+    })),
+    coach: {
+      name: intelligence.coach.name,
+      source: "Mock scenario",
+      metricsStatus: "mock",
+      flexibility: intelligence.coach.flexibility,
+      substitution: intelligence.coach.substitution,
+      gameState: intelligence.coach.gameState
+    }
+  };
 }
 
 function eventImpactScore(player: EventPlayerProfile) {
@@ -1903,6 +1698,10 @@ function clampMetric(value: number, min = 0, max = 100) {
 
 function isPlayerMetricsVerified(player: PlayerStatus) {
   return player.metricsStatus === "verified" || player.metricsStatus === "user-imported";
+}
+
+function isPlayerMetricsAvailable(player: PlayerStatus, allowMock = false) {
+  return isPlayerMetricsVerified(player) || allowMock && player.metricsStatus === "mock";
 }
 
 function verifiedPlayerHeight(player: PlayerStatus) {
@@ -1985,22 +1784,22 @@ function buildMatchupInsights(teamA: TeamProfile, teamB: TeamProfile): MatchupIn
   });
 }
 
-function buildKeeperPenaltyInsight(teamA: TeamProfile, teamB: TeamProfile): KeeperPenaltyInsight[] {
+function buildKeeperPenaltyInsight(teamA: TeamProfile, teamB: TeamProfile, allowMock = false): KeeperPenaltyInsight[] {
   const pairs = [
     {
       keeper: pickPlayer(teamB, ["goal", "门将"], 4),
-      shooter: pickPlayer(teamA, ["forward", "winger", "striker", "前锋"], 0)
+      shooter: pickPlayer(teamA, ["centre forward", "striker", "前锋"], 7)
     },
     {
       keeper: pickPlayer(teamA, ["goal", "门将"], 4),
-      shooter: pickPlayer(teamB, ["forward", "winger", "striker", "前锋"], 0)
+      shooter: pickPlayer(teamB, ["centre forward", "striker", "前锋"], 7)
     }
   ];
 
   return pairs.flatMap(({ keeper, shooter }) => {
     const penaltiesFaced = keeper.penaltiesFaced ?? 0;
     const penaltiesTaken = shooter.penaltiesTaken ?? 0;
-    if (!isPlayerMetricsVerified(keeper) || !isPlayerMetricsVerified(shooter) || penaltiesFaced <= 0 || penaltiesTaken <= 0) {
+    if (!isPlayerMetricsAvailable(keeper, allowMock) || !isPlayerMetricsAvailable(shooter, allowMock) || penaltiesFaced <= 0 || penaltiesTaken <= 0) {
       return [];
     }
     const penaltySave = clampMetric(((keeper.penaltySaves ?? 0) / penaltiesFaced) * 100);
@@ -2062,11 +1861,11 @@ function buildTacticalChains(teamA: TeamProfile, teamB: TeamProfile): TacticalCh
   ];
 }
 
-function buildCoachProfiles(teamA: TeamProfile, teamB: TeamProfile): CoachProfile[] {
+function buildCoachProfiles(teamA: TeamProfile, teamB: TeamProfile, allowMock = false): CoachProfile[] {
   return [teamA, teamB].flatMap((team) => {
     const coach = team.coach;
     if (
-      coach?.metricsStatus !== "verified"
+      (coach?.metricsStatus !== "verified" && (!allowMock || coach?.metricsStatus !== "mock"))
       || typeof coach.flexibility !== "number"
       || typeof coach.substitution !== "number"
       || typeof coach.gameState !== "number"
@@ -2088,26 +1887,39 @@ function buildCoachProfiles(teamA: TeamProfile, teamB: TeamProfile): CoachProfil
   });
 }
 
+const nonPlayingRoleFragments = [
+  "coach", "manager", "president", "chairman", "assistant", "ceo", "chief",
+  "director", "operations", "executive", "owner", "board", "staff", "scout",
+  "physio", "doctor", "analyst", "administrator", "coordinator", "secretary"
+];
+
+function isNonPlayingStaffRole(role: string) {
+  const normalizedRole = role.trim().toLowerCase();
+  return nonPlayingRoleFragments.some((fragment) => normalizedRole.includes(fragment));
+}
+
 function displayRosterPlayers(team: TeamProfile) {
   return (team.players ?? []).filter(
-    (player) => player.rosterStatus === "provider" || player.rosterStatus === "user-imported"
+    (player) => (player.rosterStatus === "provider" || player.rosterStatus === "user-imported")
+      && !isNonPlayingStaffRole(player.role)
   );
 }
 
-function PlayerCard({ player, onOpen }: { player: PlayerStatus; onOpen: () => void }) {
-  const verified = player.metricsStatus === "verified" || player.metricsStatus === "user-imported";
+function PlayerCard({ player, onOpen, allowMock = false }: { player: PlayerStatus; onOpen: () => void; allowMock?: boolean }) {
+  const verified = isPlayerMetricsAvailable(player, allowMock);
+  const mock = allowMock && player.metricsStatus === "mock";
   return (
-    <div className={`player-card ${player.status}`}>
+    <div className={`player-card ${player.status}${mock ? " mock" : ""}`}>
       <div className="player-card-top">
         <div className="player-card-identity">
           <PlayerAvatar player={player} />
           <div>
-            <strong>{player.name}</strong>
-            <span>{player.role}</span>
+            <strong><FootballName name={player.name} type="player" translation={player.nameZh} /></strong>
+            <BilingualTerm value={player.role} />
           </div>
         </div>
         <button type="button" onClick={onOpen}>
-          {verified ? statusLabel(player.status) : "状态待核验"}
+          {mock ? "演示状态" : verified ? statusLabel(player.status) : "状态待核验"}
         </button>
       </div>
       <div className="player-stats">
@@ -2116,7 +1928,9 @@ function PlayerCard({ player, onOpen }: { player: PlayerStatus; onOpen: () => vo
         <span>助攻 {verified ? player.assists : "--"}</span>
         <span>防守 {verified ? player.defense : "--"}</span>
       </div>
-      {!verified ? (
+      {mock ? (
+        <span className="data-quality-tag mock">演示球员 · 非真实个人数据</span>
+      ) : !verified ? (
         <span className="data-quality-tag">暂无核验统计</span>
       ) : null}
       <div className="player-meter">
@@ -2142,7 +1956,7 @@ function TeamRosterPreview({
     <div className="team-roster-preview">
       <div className="team-roster-head">
         <div>
-          <strong>球员详情</strong>
+          <strong><UiBilingual zh="球员详情" en="Player Details" /></strong>
           <span>
             {status?.loading
               ? "正在补拉球员照片和真实名单"
@@ -2163,7 +1977,7 @@ function TeamRosterPreview({
         <div className="team-roster-coach">
           {team.coach.photoUrl ? <img src={team.coach.photoUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <UserRoundCheck size={18} aria-hidden="true" />}
           <span>
-            <strong>主教练 {team.coach.name}</strong>
+            <strong><UiBilingual zh="主教练" en="Head Coach" compact /> <FootballName name={team.coach.name} type="player" /></strong>
             <small>
               {[team.coach.nationality, typeof team.coach.age === "number" ? `${team.coach.age} 岁` : null, team.coach.source]
                 .filter(Boolean)
@@ -2186,8 +2000,8 @@ function TeamRosterPreview({
             <button className={`team-roster-player ${player.status}`} type="button" key={`${team.id}-${player.name}-${player.role}`} onClick={() => onOpenPlayer(player)}>
               <PlayerAvatar player={player} size="sm" />
               <span className="team-roster-player-main">
-                <strong>{player.name}</strong>
-                <em>{player.role}</em>
+                <strong><FootballName name={player.name} type="player" translation={player.nameZh} /></strong>
+                <em><BilingualTerm value={player.role} /></em>
               </span>
               <span className="team-roster-player-data">
                 <b>{isPlayerMetricsVerified(player) ? statusLabel(player.status) : "状态待核验"}</b>
@@ -2204,10 +2018,10 @@ function TeamRosterPreview({
   );
 }
 
-export default function Home() {
+function WorkspaceApp() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [filters, setFilters] = useState<FilterState>(initialFilters);
-  const [activeView, setActiveView] = useState<WorkspaceView>("teams");
+  const [activeView, setActiveView] = useState<WorkspaceView>("match");
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
   const [result, setResult] = useState<PredictionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -2253,10 +2067,187 @@ export default function Home() {
     message: null,
     error: null
   });
+  const [fixtureDate, setFixtureDate] = useState(beijingDateValue);
+  const [fixtureSearch, setFixtureSearch] = useState("");
+  const [fixtureDayFilter, setFixtureDayFilter] = useState("");
+  const [selectedFixture, setSelectedFixture] = useState<ScheduledFixture | null>(null);
+  const [fixtureSchedule, setFixtureSchedule] = useState<{
+    loading: boolean;
+    fixtures: ScheduledFixture[];
+    providers: FixtureProvider[];
+    fetchedAt: string | null;
+    message: string | null;
+    error: string | null;
+    dataMode: "live" | "mock" | null;
+    fallbackReason: string | null;
+  }>({ loading: false, fixtures: [], providers: [], fetchedAt: null, message: null, error: null, dataMode: null, fallbackReason: null });
+  const fixtureRequestId = useRef(0);
   const autoBadgeImportStarted = useRef(false);
+  const workspaceInteractionRef = useRef<HTMLElement>(null);
+  const stadiumHeroRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = workspaceInteractionRef.current;
+    if (!root || window.matchMedia("(prefers-reduced-motion: reduce)").matches || window.matchMedia("(pointer: coarse)").matches) return;
+
+    const surfaceSelector = [
+      ".panel", ".fixture-card", ".team-option-shell", ".workflow-item", ".visual-card", ".prob-card",
+      ".team-state-card", ".matchup-card", ".keeper-penalty-card", ".coach-card", ".tactical-card"
+    ].join(",");
+    const magneticSelector = ".step-switcher button, .btn-primary, .account-button, .fixture-refresh-button, .fixture-league-shortcuts button";
+    let activeSurface: HTMLElement | null = null;
+    let activeMagnetic: HTMLElement | null = null;
+    let frame = 0;
+    let pendingPointer: { x: number; y: number; target: Element | null } | null = null;
+
+    const resetSurface = (element: HTMLElement | null) => {
+      element?.style.setProperty("--spot-opacity", "0");
+      element?.classList.remove("pointer-reactive");
+    };
+
+    const resetMagnetic = (element: HTMLElement | null) => {
+      element?.style.setProperty("--magnet-x", "0px");
+      element?.style.setProperty("--magnet-y", "0px");
+    };
+
+    const applyPointer = () => {
+      frame = 0;
+      if (!pendingPointer) return;
+      const { x, y, target } = pendingPointer;
+      const surface = target?.closest(surfaceSelector) as HTMLElement | null;
+      if (surface !== activeSurface) {
+        resetSurface(activeSurface);
+        activeSurface = surface;
+      }
+      if (surface) {
+        const bounds = surface.getBoundingClientRect();
+        surface.classList.add("pointer-reactive");
+        surface.style.setProperty("--spot-x", `${x - bounds.left}px`);
+        surface.style.setProperty("--spot-y", `${y - bounds.top}px`);
+        surface.style.setProperty("--spot-opacity", "1");
+      }
+
+      const magnetic = target?.closest(magneticSelector) as HTMLElement | null;
+      if (magnetic !== activeMagnetic) {
+        resetMagnetic(activeMagnetic);
+        activeMagnetic = magnetic;
+      }
+      if (magnetic) {
+        const bounds = magnetic.getBoundingClientRect();
+        const offsetX = Math.max(-5, Math.min(5, (x - bounds.left - bounds.width / 2) * 0.09));
+        const offsetY = Math.max(-4, Math.min(4, (y - bounds.top - bounds.height / 2) * 0.09));
+        magnetic.style.setProperty("--magnet-x", `${offsetX}px`);
+        magnetic.style.setProperty("--magnet-y", `${offsetY}px`);
+      }
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      pendingPointer = {
+        x: event.clientX,
+        y: event.clientY,
+        target: event.target instanceof Element ? event.target : null
+      };
+      if (!frame) frame = window.requestAnimationFrame(applyPointer);
+    };
+
+    const resetPointer = () => {
+      pendingPointer = null;
+      resetSurface(activeSurface);
+      resetMagnetic(activeMagnetic);
+      activeSurface = null;
+      activeMagnetic = null;
+    };
+
+    root.addEventListener("pointermove", handlePointerMove);
+    root.addEventListener("pointerleave", resetPointer);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      root.removeEventListener("pointermove", handlePointerMove);
+      root.removeEventListener("pointerleave", resetPointer);
+      resetPointer();
+    };
+  }, []);
+
+  useEffect(() => {
+    const hero = stadiumHeroRef.current;
+    if (!hero || window.matchMedia("(prefers-reduced-motion: reduce)").matches || window.matchMedia("(pointer: coarse)").matches) return;
+
+    let frame = 0;
+    let pendingPointer: { x: number; y: number } | null = null;
+
+    const applyPointer = () => {
+      frame = 0;
+      if (!pendingPointer) return;
+      const bounds = hero.getBoundingClientRect();
+      const xRatio = Math.max(-0.5, Math.min(0.5, (pendingPointer.x - bounds.left) / Math.max(1, bounds.width) - 0.5));
+      const yRatio = Math.max(-0.5, Math.min(0.5, (pendingPointer.y - bounds.top) / Math.max(1, bounds.height) - 0.5));
+      hero.style.setProperty("--scene-x", `${xRatio * 8}px`);
+      hero.style.setProperty("--scene-y", `${yRatio * 5}px`);
+      hero.style.setProperty("--scene-x-reverse", `${xRatio * -8}px`);
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      pendingPointer = { x: event.clientX, y: event.clientY };
+      if (!frame) frame = window.requestAnimationFrame(applyPointer);
+    };
+
+    const resetPointer = () => {
+      pendingPointer = null;
+      hero.style.setProperty("--scene-x", "0px");
+      hero.style.setProperty("--scene-y", "0px");
+      hero.style.setProperty("--scene-x-reverse", "0px");
+    };
+
+    hero.addEventListener("pointermove", handlePointerMove);
+    hero.addEventListener("pointerleave", resetPointer);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      hero.removeEventListener("pointermove", handlePointerMove);
+      hero.removeEventListener("pointerleave", resetPointer);
+      resetPointer();
+    };
+  }, []);
+
+  const loadFixtureSchedule = useCallback(async (date: string, forceRefresh = false) => {
+    const requestId = fixtureRequestId.current + 1;
+    fixtureRequestId.current = requestId;
+    setFixtureSchedule((current) => ({ ...current, loading: true, message: null, error: null }));
+    try {
+      const response = await fetch(`/api/fixtures?date=${encodeURIComponent(date)}&days=30${forceRefresh ? "&refresh=1" : ""}`, {
+        headers: { Accept: "application/json" }
+      });
+      const data = (await response.json()) as FixtureScheduleResponse;
+      if (!response.ok || !data.ok) throw new Error(data.error ?? "赛程加载失败。请检查体育数据 Key 和网络。 ");
+      if (fixtureRequestId.current !== requestId) return;
+      const fixtures = data.fixtures ?? [];
+      const providers = data.providers ?? [];
+      const failedProviderCount = data.providerErrors?.length ?? 0;
+      const isOfflineDemo = data.dataMode === "mock";
+      setFixtureSchedule({
+        loading: false,
+        fixtures,
+        providers,
+        fetchedAt: data.fetchedAt ?? null,
+        message: `${fixtures.length} 场${isOfflineDemo ? "离线演示赛程" : "真实未来赛程"} · ${providers.map((provider) => fixtureProviderLabels[provider]).join(" + ") || "正式数据源"}${failedProviderCount ? ` · ${failedProviderCount} 个源暂不可用` : ""}${data.fetchedAt ? ` · 更新 ${fixtureTime(data.fetchedAt)}` : ""}${data.cached ? " · 缓存" : ""}`,
+        error: null,
+        dataMode: data.dataMode ?? "live",
+        fallbackReason: data.fallbackReason ?? null
+      });
+    } catch (loadError) {
+      if (fixtureRequestId.current !== requestId) return;
+      setFixtureSchedule((current) => ({
+        ...current,
+        loading: false,
+        message: null,
+        error: loadError instanceof Error ? loadError.message : "赛程加载失败。",
+        dataMode: current.dataMode,
+        fallbackReason: current.fallbackReason
+      }));
+    }
+  }, []);
 
   const workflow = result?.workflow ?? defaultWorkflow;
-  const completedSteps = workflow.filter((step) => step.status === "complete").length;
+  const completedSteps = workflow.filter((step) => step.status === "complete" || step.status === "simulated").length;
   const reportProbability = extractSummary(result, form);
   const availableTeams = useMemo(() => mergeTeamCatalogs(liveTeams), [liveTeams]);
   const baseTeamAProfile = useMemo(() => getTeamProfile(form.teamA, "teamA", availableTeams), [form.teamA, availableTeams]);
@@ -2269,29 +2260,64 @@ export default function Home() {
     () => ({ ...baseTeamBProfile, players: playerOverrides.teamB ?? baseTeamBProfile.players }),
     [baseTeamBProfile, playerOverrides.teamB]
   );
-  const teamAPlayers = useMemo(() => displayRosterPlayers(teamAProfile), [teamAProfile]);
-  const teamBPlayers = useMemo(() => displayRosterPlayers(teamBProfile), [teamBProfile]);
-  const probability = reportProbability;
   const hasVerifiedTeamMetrics = teamAProfile.metricsStatus === "verified" && teamBProfile.metricsStatus === "verified";
-  const hasVerifiedPlayerMetrics =
-    teamAProfile.players.length >= 5
-    && teamBProfile.players.length >= 5
-    && [...teamAProfile.players, ...teamBProfile.players].every(isPlayerMetricsVerified);
+  const mockIntelligence = useMemo(
+    () => buildMockMatchIntelligence({
+      teamA: form.teamA,
+      teamB: form.teamB,
+      competition: form.competition,
+      homeTeam: form.homeTeam
+    }),
+    [form.competition, form.homeTeam, form.teamA, form.teamB]
+  );
+  const usingMockIntelligence = runtimeMode === "mock";
+  const useMockProfiles = usingMockIntelligence && !hasVerifiedTeamMetrics;
+  const analysisTeamAProfile = useMemo(
+    () => useMockProfiles ? applyMockTeamIntelligence(teamAProfile, mockIntelligence.teamA) : teamAProfile,
+    [mockIntelligence.teamA, teamAProfile, useMockProfiles]
+  );
+  const analysisTeamBProfile = useMemo(
+    () => useMockProfiles ? applyMockTeamIntelligence(teamBProfile, mockIntelligence.teamB) : teamBProfile,
+    [mockIntelligence.teamB, teamBProfile, useMockProfiles]
+  );
+  const teamAPlayers = useMemo(
+    () => useMockProfiles ? analysisTeamAProfile.players : displayRosterPlayers(analysisTeamAProfile),
+    [analysisTeamAProfile, useMockProfiles]
+  );
+  const teamBPlayers = useMemo(
+    () => useMockProfiles ? analysisTeamBProfile.players : displayRosterPlayers(analysisTeamBProfile),
+    [analysisTeamBProfile, useMockProfiles]
+  );
+  const probability = result ? reportProbability : usingMockIntelligence ? mockIntelligence.probability : reportProbability;
+  const hasAnalysisTeamMetrics = hasVerifiedTeamMetrics || useMockProfiles;
+  const hasAnalysisPlayerMetrics =
+    analysisTeamAProfile.players.length >= 5
+    && analysisTeamBProfile.players.length >= 5
+    && [...analysisTeamAProfile.players, ...analysisTeamBProfile.players]
+      .every((player) => isPlayerMetricsAvailable(player, useMockProfiles));
   const matchupInsights = useMemo(
-    () => hasVerifiedTeamMetrics && hasVerifiedPlayerMetrics ? buildMatchupInsights(teamAProfile, teamBProfile) : [],
-    [hasVerifiedPlayerMetrics, hasVerifiedTeamMetrics, teamAProfile, teamBProfile]
+    () => hasAnalysisTeamMetrics && hasAnalysisPlayerMetrics
+      ? buildMatchupInsights(analysisTeamAProfile, analysisTeamBProfile)
+      : [],
+    [analysisTeamAProfile, analysisTeamBProfile, hasAnalysisPlayerMetrics, hasAnalysisTeamMetrics]
   );
   const keeperPenaltyInsights = useMemo(
-    () => hasVerifiedTeamMetrics && hasVerifiedPlayerMetrics ? buildKeeperPenaltyInsight(teamAProfile, teamBProfile) : [],
-    [hasVerifiedPlayerMetrics, hasVerifiedTeamMetrics, teamAProfile, teamBProfile]
+    () => hasAnalysisTeamMetrics && hasAnalysisPlayerMetrics
+      ? buildKeeperPenaltyInsight(analysisTeamAProfile, analysisTeamBProfile, useMockProfiles)
+      : [],
+    [analysisTeamAProfile, analysisTeamBProfile, hasAnalysisPlayerMetrics, hasAnalysisTeamMetrics, useMockProfiles]
   );
   const tacticalChains = useMemo(
-    () => hasVerifiedTeamMetrics && hasVerifiedPlayerMetrics ? buildTacticalChains(teamAProfile, teamBProfile) : [],
-    [hasVerifiedPlayerMetrics, hasVerifiedTeamMetrics, teamAProfile, teamBProfile]
+    () => hasAnalysisTeamMetrics && hasAnalysisPlayerMetrics
+      ? buildTacticalChains(analysisTeamAProfile, analysisTeamBProfile)
+      : [],
+    [analysisTeamAProfile, analysisTeamBProfile, hasAnalysisPlayerMetrics, hasAnalysisTeamMetrics]
   );
   const coachProfiles = useMemo(
-    () => hasVerifiedTeamMetrics ? buildCoachProfiles(teamAProfile, teamBProfile) : [],
-    [hasVerifiedTeamMetrics, teamAProfile, teamBProfile]
+    () => hasAnalysisTeamMetrics
+      ? buildCoachProfiles(analysisTeamAProfile, analysisTeamBProfile, useMockProfiles)
+      : [],
+    [analysisTeamAProfile, analysisTeamBProfile, hasAnalysisTeamMetrics, useMockProfiles]
   );
   const readyOfficialSources = useMemo(
     () => (officialSources?.providers ?? []).filter((provider) => ["ready", "open-data-ready"].includes(provider.runtimeStatus)),
@@ -2333,27 +2359,78 @@ export default function Home() {
         .includes(keyword);
     });
   }, [availableTeams, filters]);
+  const fixtureDateCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    fixtureSchedule.fixtures.forEach((fixture) => {
+      const date = beijingFixtureDate(fixture.startsAt);
+      if (date) counts.set(date, (counts.get(date) ?? 0) + 1);
+    });
+    return [...counts.entries()].sort(([left], [right]) => left.localeCompare(right));
+  }, [fixtureSchedule.fixtures]);
+  const fixturesForSelectedDay = useMemo(
+    () => fixtureDayFilter
+      ? fixtureSchedule.fixtures.filter((fixture) => beijingFixtureDate(fixture.startsAt) === fixtureDayFilter)
+      : fixtureSchedule.fixtures,
+    [fixtureDayFilter, fixtureSchedule.fixtures]
+  );
+  const visibleFixtures = useMemo(() => {
+    const keyword = fixtureSearch.trim().toLowerCase();
+    if (!keyword) return fixturesForSelectedDay;
+    return fixturesForSelectedDay.filter((fixture) => fixtureSearchText(fixture).includes(keyword));
+  }, [fixturesForSelectedDay, fixtureSearch]);
+  const fixtureLeagueGroups = useMemo(() => {
+    const groups = new Map<string, { competition: string; country: string; fixtures: ScheduledFixture[] }>();
+
+    visibleFixtures.forEach((fixture) => {
+      const competition = fixture.competition || "其他赛事";
+      const country = fixture.country || "国际";
+      const key = `${country}\u0000${competition}`;
+      const group = groups.get(key) ?? { competition, country, fixtures: [] };
+      group.fixtures.push(fixture);
+      groups.set(key, group);
+    });
+
+    return [...groups.values()].sort((left, right) => {
+      const leftKickoff = Date.parse(left.fixtures[0]?.startsAt ?? "");
+      const rightKickoff = Date.parse(right.fixtures[0]?.startsAt ?? "");
+      return leftKickoff - rightKickoff || left.competition.localeCompare(right.competition, "zh-CN");
+    });
+  }, [visibleFixtures]);
+  const fixtureCompetitionCounts = useMemo(
+    () => Object.fromEntries(fixtureCompetitionFilters.map((competition) => [
+      competition,
+      competition
+        ? fixturesForSelectedDay.filter((fixture) => fixtureSearchText(fixture).includes(competition.toLowerCase())).length
+        : fixturesForSelectedDay.length
+    ])),
+    [fixturesForSelectedDay]
+  );
   const activeFilterCount = [filters.search, filters.league, filters.country, filters.continent, filters.tier]
     .filter((value) => value && value !== "all").length + (filters.mode === "all" ? 0 : 1);
   const filteredClubCount = filteredTeams.filter((team) => team.kind === "club").length;
   const filteredNationalCount = filteredTeams.length - filteredClubCount;
+  const selectedTeamCount = new Set([form.teamA.trim(), form.teamB.trim()].filter(Boolean)).size;
 
   const payload = useMemo(
     () => ({
       ...form,
+      matchDate: form.matchDate && Number.isFinite(new Date(form.matchDate).getTime())
+        ? new Date(form.matchDate).toISOString()
+        : form.matchDate,
       maxUserChargeCents: Number(form.maxUserChargeCents),
-      ...(paymentOrderId ? { paymentOrderId } : {})
+      ...(paymentOrderId ? { paymentOrderId } : {}),
+      ...(selectedFixture ? { fixtureId: selectedFixture.id, fixtureProvider: selectedFixture.provider } : {})
     }),
-    [form, paymentOrderId]
+    [form, paymentOrderId, selectedFixture]
   );
   const workspaceTabs = useMemo(
     () => [
-      { id: "teams" as WorkspaceView, icon: ListFilter, label: "选球队", meta: `${filteredTeams.length} 支` },
-      { id: "match" as WorkspaceView, icon: CalendarClock, label: "比赛设置", meta: estimate ? currency(estimate.estimatedUserChargeCents) : "未估算" },
-      { id: "analysis" as WorkspaceView, icon: BarChart3, label: "数据分析", meta: eventData ? "真实样本" : "待获取" },
-      { id: "report" as WorkspaceView, icon: FileText, label: "报告", meta: result ? "已生成" : "待生成" }
+      { id: "match" as WorkspaceView, icon: CalendarClock, label: "选比赛", english: "Fixtures", meta: fixtureSchedule.loading ? "联网中" : `${fixtureSchedule.fixtures.length} 场` },
+      { id: "teams" as WorkspaceView, icon: ListFilter, label: "选球队", english: "Teams", meta: `手动 · ${selectedTeamCount} 支` },
+      { id: "analysis" as WorkspaceView, icon: BarChart3, label: "数据分析", english: "Analysis", meta: eventData ? "真实样本" : runtimeMode === "mock" ? "演示情报" : "待获取" },
+      { id: "report" as WorkspaceView, icon: FileText, label: "报告", english: "Report", meta: result ? "已生成" : "待生成" }
     ],
-    [eventData, estimate, filteredTeams.length, result]
+    [eventData, fixtureSchedule.fixtures.length, fixtureSchedule.loading, result, runtimeMode, selectedTeamCount]
   );
 
   useEffect(() => {
@@ -2372,6 +2449,12 @@ export default function Home() {
       setAccountMessage("支付已返回，系统将以Stripe Webhook最终确认结果为准。");
     }
   }, []);
+
+  useEffect(() => {
+    if (activeView !== "match") return;
+    setFixtureDayFilter("");
+    void loadFixtureSchedule(fixtureDate);
+  }, [activeView, fixtureDate, loadFixtureSchedule]);
 
   useEffect(() => {
     if (!accountUser) {
@@ -2454,6 +2537,11 @@ export default function Home() {
 
   function updateForm(patch: Partial<FormState>) {
     setForm((current) => ({ ...current, ...patch }));
+    if (patch.teamA !== undefined || patch.teamB !== undefined || patch.matchDate !== undefined || patch.competition !== undefined) {
+      setSelectedFixture(null);
+      setMatchIntelligence(null);
+      setMatchIntelligenceStatus((current) => ({ ...current, message: null, error: null }));
+    }
     if (patch.teamA !== undefined || patch.teamB !== undefined) {
       setPlayerOverrides((current) => {
         const next = { ...current };
@@ -2466,6 +2554,18 @@ export default function Home() {
     setError(null);
     setEventData(null);
     setEventDataStatus((current) => ({ ...current, message: null, error: null }));
+  }
+
+  function selectScheduledFixture(fixture: ScheduledFixture) {
+    updateForm({
+      teamA: fixture.home.name,
+      teamB: fixture.away.name,
+      competition: fixture.competition,
+      matchDate: dateTimeLocalValue(fixture.startsAt),
+      homeTeam: "team_a"
+    });
+    setSelectedFixture(fixture);
+    setActiveView("match");
   }
 
   function updateFilters(patch: Partial<FilterState>) {
@@ -2527,10 +2627,18 @@ export default function Home() {
 
   async function ensureTeamRosterDetails(team: TeamProfile) {
     const key = teamKey(team);
-    const hasPlayerPhotos = team.players.some((player) => Boolean(player.avatarUrl?.trim()));
+    const providerPlayers = displayRosterPlayers(team);
+    const detailCount = providerPlayers.length;
+    const existingPhotoCount = providerPlayers.filter((player) => Boolean(player.avatarUrl?.trim())).length;
+    const existingHeightCount = providerPlayers.filter((player) => typeof player.heightCm === "number").length;
+    const existingLocalizedCount = providerPlayers.filter((player) => Boolean(chinesePlayerName(player.name, player.nameZh))).length;
+    const metadataComplete = detailCount > 0
+      && existingPhotoCount / detailCount >= 0.7
+      && existingHeightCount / detailCount >= 0.7
+      && existingLocalizedCount / detailCount >= 0.7;
     const currentStatus = teamRosterFetch[key];
 
-    if (hasPlayerPhotos || currentStatus?.loading || currentStatus?.message) {
+    if (metadataComplete || currentStatus?.loading) {
       return;
     }
 
@@ -2562,17 +2670,20 @@ export default function Home() {
       }
 
       setLiveTeams((current) => mergeLiveTeams(current, teams));
-      const photoCount = matchingTeam.players.filter((player) => Boolean(player.avatarUrl?.trim())).length;
+      const matchingPlayers = displayRosterPlayers(matchingTeam);
+      const photoCount = matchingPlayers.filter((player) => Boolean(player.avatarUrl?.trim())).length;
+      const heightCount = matchingPlayers.filter((player) => typeof player.heightCm === "number").length;
+      const localizedCount = matchingPlayers.filter((player) => Boolean(chinesePlayerName(player.name, player.nameZh))).length;
       const providerUnavailable = data.notice?.toLowerCase().includes("provider unavailable") || data.source?.apiKeyMode === "cache";
       setTeamRosterFetch((current) => ({
         ...current,
         [key]: {
           loading: false,
-          message: photoCount
-            ? `已补充 ${matchingTeam.players.length} 名球员，含 ${photoCount} 张照片`
+          message: photoCount || heightCount || localizedCount
+            ? `已补充 ${matchingPlayers.length} 名球员 · 照片 ${photoCount} · 身高 ${heightCount} · 中文名 ${localizedCount}`
             : providerUnavailable
-              ? `实时数据源暂不可用，先显示 ${matchingTeam.players.length} 名缓存球员`
-              : `已补充 ${matchingTeam.players.length} 名球员`,
+              ? `实时数据源暂不可用，先显示 ${matchingPlayers.length} 名缓存球员`
+              : `已补充 ${matchingPlayers.length} 名球员`,
           error: null
         }
       }));
@@ -2672,6 +2783,7 @@ export default function Home() {
           teamA: form.teamA,
           teamB: form.teamB,
           matchDate: form.matchDate,
+          ...(selectedFixture ? { fixtureId: selectedFixture.id, fixtureProvider: selectedFixture.provider } : {}),
           forceRefresh: Boolean(matchIntelligence)
         })
       });
@@ -2709,6 +2821,8 @@ export default function Home() {
     setResult(null);
     setError(null);
     setEventData(null);
+    setSelectedFixture(null);
+    setMatchIntelligence(null);
     setEventDataStatus((current) => ({ ...current, message: null, error: null }));
   }
 
@@ -2731,6 +2845,10 @@ export default function Home() {
   }
 
   function openBillingModal() {
+    if (runtimeMode === "mock") {
+      setActiveModal({ type: "mockBilling" });
+      return;
+    }
     setActiveModal(form.billingMode === "platform" ? { type: "payment" } : { type: "byok" });
   }
 
@@ -2789,6 +2907,11 @@ export default function Home() {
   }
 
   async function requestEstimate() {
+    const dateIssue = matchDateIssue(form.matchDate);
+    if (dateIssue) {
+      setError(dateIssue);
+      return;
+    }
     setLoading("estimate");
     setError(null);
     setEstimate(null);
@@ -2814,6 +2937,12 @@ export default function Home() {
   }
 
   async function requestPrediction() {
+    const dateIssue = matchDateIssue(form.matchDate);
+    if (dateIssue) {
+      setError(dateIssue);
+      setActiveView("match");
+      return;
+    }
     setLoading("predict");
     setError(null);
 
@@ -2843,7 +2972,7 @@ export default function Home() {
   }
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" ref={workspaceInteractionRef}>
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
@@ -2851,74 +2980,74 @@ export default function Home() {
               <Gauge size={21} aria-hidden="true" />
             </div>
             <div>
-              <h1>赛前情报分析 Agent</h1>
-              <p>球队筛选、球员状态、公开情报与概率预测</p>
+              <h1><UiBilingual zh="赛前情报" en="Pre-match Intelligence" compact /></h1>
+              <p>足球预测 Agent · Football Prediction Agent</p>
             </div>
           </div>
           <div className="topbar-status">
-            <span className="status-pill">
+            <span className="status-pill runtime-status" title={runtimeMode === "live" ? "实时数据模式" : "演示数据模式"}>
               <ShieldCheck size={15} aria-hidden="true" />
-              {runtimeMode === "live" ? "Live 模式" : "Mock 模式"}
-            </span>
-            <span className="status-pill muted">
-              <LockKeyhole size={15} aria-hidden="true" />
-              {runtimeMode === "live" ? "质量门控计费" : "无真实扣费"}
+              {runtimeMode === "live" ? "实时 / Live" : "演示 / Mock"}
             </span>
             <button className="status-pill account-button" type="button" onClick={() => setActiveModal({ type: "account" })}>
               <UserRoundCheck size={15} aria-hidden="true" />
-              {accountUser?.email ?? (accountConfigured ? "登录" : "账户待配置")}
+              {accountUser?.email ?? (accountConfigured ? "登录 / Sign in" : "账户待配置 / Setup")}
             </button>
           </div>
         </div>
       </header>
 
       <section className="stadium-hero" aria-label="match overview">
-        <div className="stadium-lights" aria-hidden="true" />
-        <div className="stadium-hero-inner">
+        <div className="stadium-hero-inner" ref={stadiumHeroRef}>
+          <ImmersiveFieldLayer />
           <div className="hero-team">
             <TeamBadge team={teamAProfile} />
             <div>
-              <span>{teamAProfile.kind === "club" ? teamAProfile.league : teamAProfile.continent}</span>
-              <strong>{form.teamA || "球队 A"}</strong>
+              <BilingualTerm value={teamAProfile.kind === "club" ? teamAProfile.league : teamAProfile.continent} />
+              <strong><FootballName name={form.teamA || "球队 A"} /></strong>
               <small className="team-origin-line">
                 <TeamCountryFlag team={teamAProfile} compact />
-                {teamAProfile.country} / {teamAProfile.tier}
+                <BilingualTerm value={teamAProfile.country} /> / <BilingualTerm value={teamAProfile.tier} />
               </small>
             </div>
           </div>
-          <div className="hero-pitch">
-            <div className="pitch-mini large" aria-hidden="true">
-              <div className="pitch-center" />
-              <div className="pitch-dot left" />
-              <div className="pitch-dot right" />
-              <div className="match-ball" />
+          <div className="hero-center">
+            <span className="hero-competition">{form.competition || "待设置赛事"}</span>
+            <div className="hero-pitch">
+              <div className="pitch-mini large" aria-hidden="true">
+                <div className="pitch-center" />
+                <div className="pitch-dot left" />
+                <div className="pitch-dot right" />
+                <div className="match-ball" />
+              </div>
+              <b>VS</b>
             </div>
-            <b>VS</b>
+            <div className="match-meta">
+              <span>
+                <CalendarClock size={13} aria-hidden="true" />
+                {form.matchDate || "待设置时间"}
+              </span>
+              <span>
+                <Landmark size={13} aria-hidden="true" />
+                {getHomeLabel(form)}
+              </span>
+            </div>
+            <span className={`hero-data-origin ${selectedFixture?.dataMode === "mock" ? "mock" : ""}`}>
+              {selectedFixture ? selectedFixture.dataMode === "mock" ? "演示赛程" : "真实赛程" : "手动对阵"}
+              <small> / </small>
+              {runtimeMode === "mock" ? "模拟分析" : "真实分析"}
+            </span>
           </div>
           <div className="hero-team right">
             <div>
-              <span>{teamBProfile.kind === "club" ? teamBProfile.league : teamBProfile.continent}</span>
-              <strong>{form.teamB || "球队 B"}</strong>
+              <BilingualTerm value={teamBProfile.kind === "club" ? teamBProfile.league : teamBProfile.continent} />
+              <strong><FootballName name={form.teamB || "球队 B"} /></strong>
               <small className="team-origin-line">
                 <TeamCountryFlag team={teamBProfile} compact />
-                {teamBProfile.country} / {teamBProfile.tier}
+                <BilingualTerm value={teamBProfile.country} /> / <BilingualTerm value={teamBProfile.tier} />
               </small>
             </div>
             <TeamBadge team={teamBProfile} />
-          </div>
-          <div className="match-meta">
-            <span>
-              <Trophy size={14} aria-hidden="true" />
-              {form.competition || "赛事"}
-            </span>
-            <span>
-              <CalendarClock size={14} aria-hidden="true" />
-              {form.matchDate || "时间"}
-            </span>
-            <span>
-              <Landmark size={14} aria-hidden="true" />
-              {getHomeLabel(form)}
-            </span>
           </div>
         </div>
       </section>
@@ -2931,23 +3060,26 @@ export default function Home() {
               className={activeView === item.id ? "active" : ""}
               type="button"
               onClick={() => setActiveView(item.id)}
+              aria-current={activeView === item.id ? "step" : undefined}
               key={item.id}
             >
               <Icon size={16} aria-hidden="true" />
-              <span>{item.label}</span>
-              <b>{item.meta}</b>
+              <span>
+                <UiBilingual zh={item.label} en={item.english} compact />
+                <small>{item.meta}</small>
+              </span>
             </button>
           );
         })}
       </nav>
 
-      <section className={`workspace view-${activeView}`} aria-label="Agent workspace">
+      <section className={`workspace view-${activeView}`} aria-label="Agent workspace" key={activeView}>
         {activeView === "teams" ? (
         <div className="panel setup-panel">
           <div className="panel-header">
             <div className="panel-title">
               <ListFilter size={18} aria-hidden="true" />
-              <h2>球队选择</h2>
+              <h2><UiBilingual zh="球队选择" en="Team Selection" /></h2>
             </div>
             <button
               className="icon-button"
@@ -2976,155 +3108,139 @@ export default function Home() {
                     })
                   }
                 >
-                  {sample.teamA} / {sample.teamB}
+                  <FootballName name={sample.teamA} /> / <FootballName name={sample.teamB} />
                 </button>
               ))}
             </div>
 
             <div className="selection-dock" aria-label="当前对阵">
               <label className="selection-team">
-                <span>球队 A</span>
+                <UiBilingual zh="球队 A" en="Team A" compact />
                 <div>
                   <TeamBadge team={teamAProfile} />
                   <input value={form.teamA} list="team-catalog" onChange={(event) => updateForm({ teamA: event.target.value })} aria-label="球队 A" />
                 </div>
-                <small>{teamAProfile.league} / {teamAProfile.country}</small>
+                <small>{chineseTeamName(form.teamA)} · {teamAProfile.league} / {teamAProfile.country}</small>
               </label>
               <button className="swap-team-button" type="button" onClick={swapTeams} title="交换球队" aria-label="交换球队 A 和球队 B">
                 <ArrowLeftRight size={18} aria-hidden="true" />
               </button>
               <label className="selection-team right">
-                <span>球队 B</span>
+                <UiBilingual zh="球队 B" en="Team B" compact />
                 <div>
                   <TeamBadge team={teamBProfile} />
                   <input value={form.teamB} list="team-catalog" onChange={(event) => updateForm({ teamB: event.target.value })} aria-label="球队 B" />
                 </div>
-                <small>{teamBProfile.league} / {teamBProfile.country}</small>
+                <small>{chineseTeamName(form.teamB)} · {teamBProfile.league} / {teamBProfile.country}</small>
               </label>
               <datalist id="team-catalog">
                 {availableTeams.map((team) => <option value={team.name} key={team.id} />)}
               </datalist>
             </div>
 
-            <div className="selector-tabs" role="group" aria-label="球队分类">
-              <button
-                className={filters.mode === "all" ? "active" : ""}
-                type="button"
-                onClick={() => updateFilters({ mode: "all" })}
-              >
-                全部
-              </button>
-              <button
-                className={filters.mode === "club" ? "active" : ""}
-                type="button"
-                onClick={() => updateFilters({ mode: "club" })}
-              >
-                俱乐部
-              </button>
-              <button
-                className={filters.mode === "national" ? "active" : ""}
-                type="button"
-                onClick={() => updateFilters({ mode: "national" })}
-              >
-                国家队
-              </button>
-            </div>
+            <div className="team-finder">
+              <div className="selector-tabs" role="group" aria-label="球队分类">
+                <button
+                  className={filters.mode === "all" ? "active" : ""}
+                  type="button"
+                  onClick={() => updateFilters({ mode: "all" })}
+                >
+                  <UiBilingual zh="全部" en="All" compact />
+                </button>
+                <button
+                  className={filters.mode === "club" ? "active" : ""}
+                  type="button"
+                  onClick={() => updateFilters({ mode: "club" })}
+                >
+                  <UiBilingual zh="俱乐部" en="Clubs" compact />
+                </button>
+                <button
+                  className={filters.mode === "national" ? "active" : ""}
+                  type="button"
+                  onClick={() => updateFilters({ mode: "national" })}
+                >
+                  <UiBilingual zh="国家队" en="National Teams" compact />
+                </button>
+              </div>
 
-            <div className="field search-field">
-              <label htmlFor="teamSearch">输入搜索</label>
-              <div>
-                <Search size={16} aria-hidden="true" />
-                <input
-                  id="teamSearch"
-                  value={filters.search}
-                  onChange={(event) => updateFilters({ search: event.target.value })}
-                  placeholder="输入球队、国家、联赛或大洲"
-                />
+              <div className="field search-field">
+                <label htmlFor="teamSearch"><UiBilingual zh="搜索球队" en="Search Teams" compact /></label>
+                <div>
+                  <Search size={16} aria-hidden="true" />
+                  <input
+                    id="teamSearch"
+                    value={filters.search}
+                    onChange={(event) => updateFilters({ search: event.target.value })}
+                    placeholder="球队、国家或联赛 / Team, country or league"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="filter-grid">
-              <label>
-                <span>
-                  <Globe2 size={13} aria-hidden="true" />
-                  大洲
-                </span>
-                <select value={filters.continent} onChange={(event) => updateFilters({ continent: event.target.value })}>
-                  <option value="all">全部</option>
-                  {continents.map((value) => (
-                    <option value={value} key={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>
-                  <MapPin size={13} aria-hidden="true" />
-                  国家
-                </span>
-                <select value={filters.country} onChange={(event) => updateFilters({ country: event.target.value })}>
-                  <option value="all">全部</option>
-                  {countries.map((value) => (
-                    <option value={value} key={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>
-                  <Trophy size={13} aria-hidden="true" />
-                  联赛
-                </span>
-                <select value={filters.league} onChange={(event) => updateFilters({ league: event.target.value })}>
-                  <option value="all">全部</option>
-                  {leagues.map((value) => (
-                    <option value={value} key={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>
-                  <Filter size={13} aria-hidden="true" />
-                  等级
-                </span>
-                <select value={filters.tier} onChange={(event) => updateFilters({ tier: event.target.value })}>
-                  <option value="all">全部</option>
-                  {tiers.map((value) => (
-                    <option value={value} key={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div className="live-import-card" aria-live="polite">
-              <div>
-                <strong>球队目录与队徽</strong>
-                <span>{liveImport.message ?? `TheSportsDB · 已接入 ${liveTeams.length} 支`}</span>
+            <details className="filter-details" open={activeFilterCount > 1 || undefined}>
+              <summary>
+                <Filter size={14} aria-hidden="true" />
+                <UiBilingual zh="更多筛选" en="More Filters" compact />
+                <span>{activeFilterCount ? `已启用 ${activeFilterCount} 项` : "大洲 / 国家 / 联赛 / 等级"}</span>
+              </summary>
+              <div className="filter-grid">
+                <label>
+                  <span><Globe2 size={13} aria-hidden="true" />大洲</span>
+                  <select value={filters.continent} onChange={(event) => updateFilters({ continent: event.target.value })}>
+                    <option value="all">全部</option>
+                    {continents.map((value) => <option value={value} key={value}>{value}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span><MapPin size={13} aria-hidden="true" />国家</span>
+                  <select value={filters.country} onChange={(event) => updateFilters({ country: event.target.value })}>
+                    <option value="all">全部</option>
+                    {countries.map((value) => <option value={value} key={value}>{value}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span><Trophy size={13} aria-hidden="true" />联赛</span>
+                  <select value={filters.league} onChange={(event) => updateFilters({ league: event.target.value })}>
+                    <option value="all">全部</option>
+                    {leagues.map((value) => <option value={value} key={value}>{value}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span><Filter size={13} aria-hidden="true" />等级</span>
+                  <select value={filters.tier} onChange={(event) => updateFilters({ tier: event.target.value })}>
+                    <option value="all">全部</option>
+                    {tiers.map((value) => <option value={value} key={value}>{value}</option>)}
+                  </select>
+                </label>
               </div>
-              <button className="panel-action-button live-import-button" type="button" onClick={importLiveTeams} disabled={liveImport.loading}>
-                {liveImport.loading ? (
-                  <RefreshCw className="spin" size={14} aria-hidden="true" />
-                ) : (
-                  <Database size={14} aria-hidden="true" />
-                )}
-                {liveImport.loading ? "导入中" : "联网导入"}
-              </button>
-            </div>
-            {liveImport.error ? <p className="error-text live-import-error">{liveImport.error}</p> : null}
+            </details>
 
-            <details className="source-details">
+            <details className="data-details">
               <summary>
                 <Database size={14} aria-hidden="true" />
-                高级数据源
-                <span>{officialSources ? `${readyOfficialSources.length}/${officialSources.providers?.length ?? 0} 可用` : "检查正式源"}</span>
+                数据与同步
+                <span>{liveTeams.length ? `已接入 ${liveTeams.length} 支` : "可联网更新"}</span>
               </summary>
-            <div className="official-source-panel" aria-live="polite">
+              <div className="team-data-tools">
+                <div className="live-import-card" aria-live="polite">
+                  <div>
+                    <strong>球队目录</strong>
+                    <span>{liveImport.message ?? `已接入 ${liveTeams.length} 支球队与队徽`}</span>
+                  </div>
+                  <button className="panel-action-button live-import-button" type="button" onClick={importLiveTeams} disabled={liveImport.loading}>
+                    {liveImport.loading ? <RefreshCw className="spin" size={14} aria-hidden="true" /> : <Database size={14} aria-hidden="true" />}
+                    {liveImport.loading ? "同步中" : "同步"}
+                  </button>
+                </div>
+              {liveImport.error ? <p className="error-text live-import-error">{liveImport.error}</p> : null}
+
+              <details className="source-details">
+                <summary>
+                  <Database size={14} aria-hidden="true" />
+                  高级数据源
+                  <span>{officialSources ? `${readyOfficialSources.length}/${officialSources.providers?.length ?? 0} 可用` : "检查正式源"}</span>
+                </summary>
+              <div className="official-source-panel" aria-live="polite">
               <div className="official-source-head">
                 <div>
                   <strong>正式数据源管线</strong>
@@ -3215,7 +3331,9 @@ export default function Home() {
                   </div>
                 </>
               ) : null}
-            </div>
+              </div>
+              </details>
+              </div>
             </details>
 
             <div className="team-results">
@@ -3254,10 +3372,16 @@ export default function Home() {
                     >
                       <TeamBadge team={team} />
                       <div className="team-option-main">
-                        <strong>{team.name}</strong>
+                        <strong><FootballName name={team.name} /></strong>
                         <span className="team-meta-line">
                           <TeamCountryFlag team={team} compact />
-                          {team.kind === "club" ? "俱乐部" : "国家队"} / {team.league} / {team.country}
+                          <span className={`team-kind-label ${team.kind}`}>
+                            <UiBilingual zh={team.kind === "club" ? "俱乐部" : "国家队"} en={team.kind === "club" ? "Club" : "National Team"} compact />
+                          </span>
+                          <span className="team-meta-separator" aria-hidden="true">/</span>
+                          <BilingualTerm value={team.league} />
+                          <span className="team-meta-separator" aria-hidden="true">/</span>
+                          <BilingualTerm value={team.country} />
                         </span>
                         {team.source ? (
                           <em>
@@ -3265,11 +3389,6 @@ export default function Home() {
                             {team.stadium ? ` / ${team.stadium}` : ""}
                           </em>
                         ) : null}
-                        <div className="team-option-bars">
-                          <i style={{ width: `${team.attack}%` }} />
-                          <i style={{ width: `${team.defense}%` }} />
-                        </div>
-                        <small className="team-metric-disclaimer">攻防条为演示占位</small>
                       </div>
                       <div className="team-option-actions">
                         <button data-slot="teamA" type="button" onClick={(event) => { event.stopPropagation(); selectTeam("teamA", team); }}>
@@ -3326,13 +3445,203 @@ export default function Home() {
             <div className="panel-header">
               <div className="panel-title">
                 <CalendarClock size={18} aria-hidden="true" />
-                <h2>比赛参数</h2>
+                <h2><UiBilingual zh="选择比赛" en="Select a Fixture" /></h2>
               </div>
             </div>
             <div className="panel-body">
+              <section className="fixture-picker" aria-labelledby="fixture-picker-title">
+                <div className="fixture-picker-head">
+                  <div>
+                    <strong id="fixture-picker-title"><UiBilingual zh="未来 30 天赛程" en="Next 30 Days" /></strong>
+                    <span>优先联网加载真实赛程，失败时自动切换离线演示库 · 北京时间</span>
+                  </div>
+                  <div className="fixture-picker-controls">
+                    <label className="fixture-date-control">
+                      <CalendarClock size={16} aria-hidden="true" />
+                      <input
+                        type="date"
+                        aria-label="赛程日期"
+                        min={beijingDateValue()}
+                        value={fixtureDate}
+                        onChange={(event) => {
+                          setFixtureDate(event.target.value);
+                          setFixtureDayFilter("");
+                          setSelectedFixture(null);
+                        }}
+                      />
+                    </label>
+                    <button
+                      className="fixture-refresh-button"
+                      type="button"
+                      title="刷新当天赛程"
+                      aria-label="刷新当天赛程"
+                      disabled={fixtureSchedule.loading}
+                      onClick={() => void loadFixtureSchedule(fixtureDate, true)}
+                    >
+                      <RefreshCw className={fixtureSchedule.loading ? "spin" : ""} size={16} aria-hidden="true" />
+                      <UiBilingual zh="实时刷新" en="Refresh Live" compact />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="fixture-toolbar">
+                  <label className="fixture-search">
+                    <Search size={15} aria-hidden="true" />
+                    <input
+                      type="search"
+                      aria-label="搜索比赛"
+                      placeholder="搜索球队、赛事或球场 / Search fixtures"
+                      value={fixtureSearch}
+                      onChange={(event) => setFixtureSearch(event.target.value)}
+                    />
+                  </label>
+                  <span aria-live="polite">
+                    {fixtureSchedule.loading ? "正在联网刷新真实赛程…" : fixtureSchedule.message ?? "正在准备近期赛程"}
+                  </span>
+                </div>
+                {fixtureSchedule.fallbackReason ? (
+                  <div className="fixture-fallback-note" role="status">
+                    <ShieldAlert size={15} aria-hidden="true" />
+                    <span><strong>演示降级已启用：</strong>{fixtureSchedule.fallbackReason} 选择后仍只运行模拟分析。</span>
+                  </div>
+                ) : null}
+                {fixtureDateCounts.length ? (
+                  <div className="fixture-date-shortcuts" role="group" aria-label="比赛日期筛选">
+                    <button
+                      className={!fixtureDayFilter ? "active" : ""}
+                      type="button"
+                      onClick={() => setFixtureDayFilter("")}
+                    >
+                      <span>全部日期</span>
+                      <small>{fixtureSchedule.fixtures.length}</small>
+                    </button>
+                    {fixtureDateCounts.map(([date, count]) => (
+                      <button
+                        className={fixtureDayFilter === date ? "active" : ""}
+                        type="button"
+                        key={date}
+                        onClick={() => setFixtureDayFilter(date)}
+                      >
+                        <span>{fixtureDateLabel(date)}</span>
+                        <small>{count}</small>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="fixture-league-shortcuts" role="group" aria-label="赛事快捷筛选">
+                  {fixtureCompetitionFilters.map((competition) => (
+                    <button
+                      className={fixtureSearch === competition ? "active" : ""}
+                      type="button"
+                      key={competition || "all"}
+                      aria-label={`${competition || "全部"} ${fixtureCompetitionCounts[competition] ?? 0} 场`}
+                      onClick={() => setFixtureSearch(competition)}
+                    >
+                      <span>{competition || "全部"}</span>
+                      <small>{fixtureCompetitionCounts[competition] ?? 0}</small>
+                    </button>
+                  ))}
+                </div>
+
+                {fixtureSchedule.error ? (
+                  <div className="fixture-error" role="alert">
+                    <AlertTriangle size={15} aria-hidden="true" />
+                    <span>{fixtureSchedule.error}</span>
+                  </div>
+                ) : null}
+
+                <div className="fixture-list" aria-busy={fixtureSchedule.loading}>
+                  {fixtureSchedule.loading && !fixtureSchedule.fixtures.length
+                    ? (
+                      <div className="fixture-loading-grid">
+                        {Array.from({ length: 4 }, (_, index) => <div className="fixture-skeleton" key={index} />)}
+                      </div>
+                    )
+                    : fixtureLeagueGroups.map((league) => (
+                      <section className="fixture-league-group" key={`${league.country}:${league.competition}`}>
+                        <header className="fixture-league-group-head">
+                          <span>
+                            <Trophy size={15} aria-hidden="true" />
+                            <strong><BilingualTerm value={league.competition} /></strong>
+                            <small><BilingualTerm value={league.country} /></small>
+                          </span>
+                          <UiBilingual zh={`${league.fixtures.length} 场比赛`} en={`${league.fixtures.length} matches`} compact />
+                        </header>
+                        <div className="fixture-league-grid">
+                          {league.fixtures.map((fixture) => {
+                            const selected = selectedFixture?.id === fixture.id && selectedFixture.provider === fixture.provider;
+                            const homeBadgeImageUrl = proxiedTeamBadgeUrl(fixture.home.badgeUrl);
+                            const awayBadgeImageUrl = proxiedTeamBadgeUrl(fixture.away.badgeUrl);
+                            return (
+                              <button
+                                className={`fixture-card ${selected ? "selected" : ""}`}
+                                type="button"
+                                aria-pressed={selected}
+                                key={`${fixture.provider}:${fixture.id}`}
+                                onClick={() => selectScheduledFixture(fixture)}
+                              >
+                                <span className="fixture-kickoff">
+                                  <CalendarClock size={14} aria-hidden="true" />
+                                  <strong>{fixtureDateLabel(beijingFixtureDate(fixture.startsAt))}</strong>
+                                  <span>{fixtureTime(fixture.startsAt)}</span>
+                                  <small>{fixture.dataMode === "mock" ? "演示 / Demo" : <BilingualTerm value={fixture.status || "NS"} />}</small>
+                                </span>
+                                <span className="fixture-card-main">
+                                  <span className="fixture-team-row">
+                                    <span>
+                                      {homeBadgeImageUrl ? <img src={homeBadgeImageUrl} alt="" /> : <i>{fixture.home.shortCode || fixture.home.name.slice(0, 2)}</i>}
+                                      <b><FootballName name={fixture.home.name} /></b>
+                                    </span>
+                                    <em>VS</em>
+                                    <span>
+                                      {awayBadgeImageUrl ? <img src={awayBadgeImageUrl} alt="" /> : <i>{fixture.away.shortCode || fixture.away.name.slice(0, 2)}</i>}
+                                      <b><FootballName name={fixture.away.name} /></b>
+                                    </span>
+                                  </span>
+                                  <span className="fixture-venue">
+                                    <MapPin size={13} aria-hidden="true" />
+                                    <span>
+                                      <UiBilingual zh="比赛场地" en="Venue" compact />
+                                      <b>{fixture.venue || "待公布 / Venue TBC"}</b>
+                                    </span>
+                                  </span>
+                                  <small className={`fixture-source-label ${fixture.dataMode === "mock" ? "mock" : "live"}`}>
+                                    {fixture.dataMode === "mock" ? "演示赛程 / Mock Fixture" : "真实赛程 / Live Fixture"}
+                                    <span> · {[fixture.round, fixtureProviderLabels[fixture.provider]].filter(Boolean).join(" · ")}</span>
+                                  </small>
+                                </span>
+                                {selected ? <CheckCircle2 className="fixture-selected-icon" size={17} aria-hidden="true" /> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ))}
+                  {!fixtureSchedule.loading && fixtureSchedule.fixtures.length > 0 && !visibleFixtures.length ? (
+                    <p className="fixture-empty">没有符合搜索条件的比赛。</p>
+                  ) : null}
+                  {!fixtureSchedule.loading && !fixtureSchedule.error && !fixtureSchedule.fixtures.length ? (
+                    <div className="fixture-empty">
+                      <CalendarClock size={20} aria-hidden="true" />
+                      <strong>未来 30 天暂未发现已收录比赛</strong>
+                      <span>可更换起始日期、点击实时刷新，或到“选球队”中手动设置对阵。</span>
+                    </div>
+                  ) : null}
+                </div>
+                {selectedFixture ? (
+                  <div className="fixture-selection-summary" role="status">
+                    <CheckCircle2 size={17} aria-hidden="true" />
+                    <span>
+                      <small>已选择</small>
+                      <strong><FootballName name={selectedFixture.home.name} /> <span aria-hidden="true">vs</span> <FootballName name={selectedFixture.away.name} /></strong>
+                    </span>
+                    <b>{fixtureDateLabel(beijingFixtureDate(selectedFixture.startsAt))} {fixtureTime(selectedFixture.startsAt)}</b>
+                  </div>
+                ) : null}
+              </section>
               <div className="form-grid">
                 <div className="field">
-                  <label htmlFor="competition">赛事</label>
+                  <label htmlFor="competition"><UiBilingual zh="赛事" en="Competition" compact /></label>
                   <input
                     id="competition"
                     value={form.competition}
@@ -3342,50 +3651,50 @@ export default function Home() {
                 </div>
                 <div className="two-col">
                   <div className="field">
-                    <label htmlFor="matchDate">比赛时间</label>
+                    <label htmlFor="matchDate"><UiBilingual zh="比赛时间" en="Kick-off Time" compact /></label>
                     <input
                       id="matchDate"
+                      type="datetime-local"
                       value={form.matchDate}
                       onChange={(event) => updateForm({ matchDate: event.target.value })}
-                      placeholder="2026-07-12 20:00"
                     />
                   </div>
                   <div className="field">
-                    <label htmlFor="homeTeam">场地</label>
+                    <label htmlFor="homeTeam"><UiBilingual zh="场地" en="Venue" compact /></label>
                     <select
                       id="homeTeam"
                       value={form.homeTeam}
                       onChange={(event) => updateForm({ homeTeam: event.target.value as FormState["homeTeam"] })}
                     >
-                      <option value="team_a">球队 A 主场</option>
-                      <option value="team_b">球队 B 主场</option>
-                      <option value="neutral">中立场</option>
+                      <option value="team_a">球队 A 主场 / Team A Home</option>
+                      <option value="team_b">球队 B 主场 / Team B Home</option>
+                      <option value="neutral">中立场 / Neutral</option>
                     </select>
                   </div>
                 </div>
 
                 <div className="field">
-                  <label>分析深度</label>
+                  <label><UiBilingual zh="分析深度" en="Analysis Depth" compact /></label>
                   <div className="segmented" role="group" aria-label="分析深度">
                     <button
                       className={`segment ${form.analysisDepth === "standard" ? "active" : ""}`}
                       type="button"
                       onClick={() => updateForm({ analysisDepth: "standard" })}
                     >
-                      标准
+                      <UiBilingual zh="标准" en="Standard" compact />
                     </button>
                     <button
                       className={`segment ${form.analysisDepth === "deep" ? "active" : ""}`}
                       type="button"
                       onClick={() => updateForm({ analysisDepth: "deep" })}
                     >
-                      深度
+                      <UiBilingual zh="深度" en="Deep" compact />
                     </button>
                   </div>
                 </div>
 
                 <div className="field">
-                  <label>费用模式</label>
+                  <label><UiBilingual zh="费用模式" en="Billing Mode" compact /></label>
                   <div className="segmented" role="group" aria-label="费用模式">
                     <button
                       className={`segment ${form.billingMode === "platform" ? "active" : ""}`}
@@ -3393,7 +3702,7 @@ export default function Home() {
                       onClick={() => updateForm({ billingMode: "platform" })}
                     >
                       <BadgeDollarSign size={15} aria-hidden="true" />
-                      平台托管
+                      <UiBilingual zh="平台托管" en="Managed" compact />
                     </button>
                     <button
                       className={`segment ${form.billingMode === "byok" ? "active" : ""}`}
@@ -3401,13 +3710,13 @@ export default function Home() {
                       onClick={() => updateForm({ billingMode: "byok" })}
                     >
                       <LockKeyhole size={15} aria-hidden="true" />
-                      自带 Key
+                      <UiBilingual zh="自带 Key" en="Bring Your Own Key" compact />
                     </button>
                   </div>
                 </div>
 
                 <div className="field">
-                  <label htmlFor="maxCharge">最高授权费用</label>
+                  <label htmlFor="maxCharge"><UiBilingual zh="最高授权费用" en="Maximum Authorized Charge" compact /></label>
                   <div className="money-input">
                     <span>¥</span>
                     <input
@@ -3453,11 +3762,11 @@ export default function Home() {
                     ) : (
                       <BadgeDollarSign size={16} aria-hidden="true" />
                     )}
-                  估算费用
+                  <UiBilingual zh="估算费用" en="Estimate Cost" compact />
                 </button>
                   <button className="btn btn-secondary" type="button" onClick={openBillingModal}>
                     <Eye size={16} aria-hidden="true" />
-                    确认方式
+                    <UiBilingual zh="确认方式" en="Confirm Billing" compact />
                   </button>
                   <button
                     className="btn btn-primary"
@@ -3470,7 +3779,7 @@ export default function Home() {
                     ) : (
                       <Send size={16} aria-hidden="true" />
                     )}
-                  生成报告
+                  <UiBilingual zh="生成报告" en="Generate Report" compact />
                 </button>
               </div>
               </div>
@@ -3481,7 +3790,7 @@ export default function Home() {
             <div className="panel-header">
               <div className="panel-title">
                 <Workflow size={18} aria-hidden="true" />
-                <h2>执行与成本</h2>
+                <h2><UiBilingual zh="执行与成本" en="Workflow & Cost" /></h2>
               </div>
               <span className="mini-stat">
                 {completedSteps}/{workflow.length}
@@ -3495,9 +3804,9 @@ export default function Home() {
                     <div>
                       <h3>
                         <span>{index + 1}</span>
-                        {step.name}
+                        <UiBilingual zh={step.name} en={workflowEnglish[step.id]?.name ?? "Workflow Step"} compact />
                       </h3>
-                      <p>{step.detail}</p>
+                      <p>{step.detail}<small>{workflowEnglish[step.id]?.detail}</small></p>
                     </div>
                   </div>
                 ))}
@@ -3505,41 +3814,42 @@ export default function Home() {
 
               <div className="cost-box">
                 <div className="cost-box-header">
-                  <span>成本预览</span>
+                <UiBilingual zh={estimate?.providerMode === "mock" ? "本次模拟费用" : "成本预览"} en={estimate?.providerMode === "mock" ? "Mock Cost" : "Cost Preview"} compact />
                   <strong>{estimate ? currency(estimate.estimatedUserChargeCents) : "未估算"}</strong>
                 </div>
                 <div className="cost-grid">
                   <div>
-                    <span>API 成本</span>
+                    <UiBilingual zh={estimate?.providerMode === "mock" ? "本次 API 成本" : "API 成本"} en="API Cost" compact />
                     <strong>{estimate ? currency(estimate.estimatedApiCostCents) : "—"}</strong>
                   </div>
                   <div>
-                    <span>倍率</span>
-                    <strong>{estimate ? `${estimate.markupMultiplier}x` : "—"}</strong>
+                    <UiBilingual zh={estimate?.providerMode === "mock" ? "正式模式参考价" : "倍率"} en={estimate?.providerMode === "mock" ? "Live Reference" : "Markup"} compact />
+                    <strong>{estimate?.formalModeEstimate ? currency(estimate.formalModeEstimate.estimatedUserChargeCents) : estimate ? `${estimate.markupMultiplier}x` : "—"}</strong>
                   </div>
                   <div>
-                    <span>最低收费</span>
-                    <strong>{estimate ? currency(estimate.minimumChargeCents) : "—"}</strong>
+                    <UiBilingual zh={estimate?.providerMode === "mock" ? "正式 API 参考" : "最低收费"} en={estimate?.providerMode === "mock" ? "Live API Reference" : "Minimum Charge"} compact />
+                    <strong>{estimate?.formalModeEstimate ? currency(estimate.formalModeEstimate.estimatedApiCostCents) : estimate ? currency(estimate.minimumChargeCents) : "—"}</strong>
                   </div>
                   <div>
-                    <span>模式</span>
-                    <strong>{form.billingMode === "platform" ? "托管" : "BYOK"}</strong>
+                    <UiBilingual zh="模式" en="Mode" compact />
+                    <strong>{estimate?.providerMode === "mock" ? "免费演示" : form.billingMode === "platform" ? "托管" : "BYOK"}</strong>
                   </div>
                 </div>
+                {estimate?.providerMode === "mock" ? <p className="mock-cost-note">Mock 模式不会调用付费服务、不会创建订单，也不会产生扣费。</p> : null}
               </div>
 
               <div className="guard-stack">
                 <div>
                   <ShieldCheck size={16} aria-hidden="true" />
-                  <span>密钥只在服务端</span>
+                  <UiBilingual zh="密钥只在服务端" en="Server-side Keys Only" compact />
                 </div>
                 <div>
                   <BadgeDollarSign size={16} aria-hidden="true" />
-                  <span>先授权后执行</span>
+                  <UiBilingual zh="先授权后执行" en="Authorize Before Execution" compact />
                 </div>
                 <div>
                   <Users size={16} aria-hidden="true" />
-                  <span>不分析隐私八卦</span>
+                  <UiBilingual zh="不分析隐私八卦" en="No Private Gossip" compact />
                 </div>
               </div>
             </div>
@@ -3555,18 +3865,22 @@ export default function Home() {
             <div className="panel-header">
               <div className="panel-title">
                 <BarChart3 size={18} aria-hidden="true" />
-                <h2>数据可视化</h2>
+                <h2><UiBilingual zh="数据可视化" en="Data Visualization" /></h2>
               </div>
               <span className="status-pill compact">
                 <Activity size={14} aria-hidden="true" />
-                {liveTeams.length ? "元数据已联网 / 指标演示" : "Mock 数据"}
+                {usingMockIntelligence ? "Mock 情报完整载入" : liveTeams.length ? "球队元数据已载入 / 指标待核验" : "等待数据"}
               </span>
             </div>
             <div className="panel-body">
               <div className="live-sync-bar">
                 <div>
-                  <strong>多源真实比赛数据</strong>
-                  <span>优先使用免费 API-Football，自动回退至 Sportmonks 或 football-data.org</span>
+                  <strong>{usingMockIntelligence ? "当前展示完整演示情报" : "多源真实比赛数据"}</strong>
+                  <span>
+                    {usingMockIntelligence
+                      ? "所有指标均标注为 Mock；同步正式数据后将由核验结果替换"
+                      : "优先使用免费 API-Football，自动回退至 Sportmonks 或 football-data.org"}
+                  </span>
                 </div>
                 <button
                   className="btn btn-secondary"
@@ -3639,36 +3953,45 @@ export default function Home() {
                 ) : null}
                 </>
               ) : null}
-              <div className="data-quality-note prominent" role="note">
-                未完成正式分析时不展示预测概率；球队评分、战术和球员对位仅在指标通过来源核验后显示。
-              </div>
+              {usingMockIntelligence ? (
+                <div className="data-quality-note prominent mock" role="note">
+                  <Sparkles size={15} aria-hidden="true" />
+                  当前为产品演示：比赛情报、球员状态、交锋与概率均由 Mock 情报引擎生成，不代表真实球队事实。
+                </div>
+              ) : (
+                <div className="data-quality-note prominent" role="note">
+                  未完成正式分析时不展示预测概率；球队评分、战术和球员对位仅在指标通过来源核验后显示。
+                </div>
+              )}
+              {usingMockIntelligence ? <MockIntelligenceBrief intelligence={mockIntelligence} /> : null}
               <MatchVisualDashboard
-                teamA={teamAProfile}
-                teamB={teamBProfile}
+                teamA={analysisTeamAProfile}
+                teamB={analysisTeamBProfile}
                 probability={probability}
                 eventData={eventData}
                 eventLoading={eventDataStatus.loading}
                 onImportEvents={importPlayerEventData}
+                allowMockData={useMockProfiles}
               />
 
               <div className="probability-grid">
                 <div className="prob-card">
                   <span>{form.teamA || "球队 A"}</span>
-                  <strong>{probability.teamA}%</strong>
+                  <strong>{result || usingMockIntelligence ? `${probability.teamA}%` : "--"}</strong>
                   <div className="prob-track">
                     <div style={{ width: `${probability.teamA}%` }} />
                   </div>
                 </div>
                 <div className="prob-card draw">
                   <span>平局</span>
-                  <strong>{probability.draw}%</strong>
+                  <strong>{result || usingMockIntelligence ? `${probability.draw}%` : "--"}</strong>
                   <div className="prob-track">
                     <div style={{ width: `${probability.draw}%` }} />
                   </div>
                 </div>
                 <div className="prob-card alt">
                   <span>{form.teamB || "球队 B"}</span>
-                  <strong>{probability.teamB}%</strong>
+                  <strong>{result || usingMockIntelligence ? `${probability.teamB}%` : "--"}</strong>
                   <div className="prob-track">
                     <div style={{ width: `${probability.teamB}%` }} />
                   </div>
@@ -3681,23 +4004,25 @@ export default function Home() {
                 <strong>{probability.score}</strong>
               </div>
 
+              {hasAnalysisTeamMetrics ? (
+                <>
               <div className="team-state-grid">
                 <div className="team-state-card">
                   <div className="team-state-head">
-                    <TeamBadge team={teamAProfile} />
+                    <TeamBadge team={analysisTeamAProfile} />
                     <div>
-                      <strong>{teamAProfile.name}</strong>
+                      <strong><FootballName name={analysisTeamAProfile.name} /></strong>
                       <span className="team-meta-line">
-                        <TeamCountryFlag team={teamAProfile} compact />
-                        {teamAProfile.league} / {teamAProfile.country}
+                        <TeamCountryFlag team={analysisTeamAProfile} compact />
+                        <BilingualTerm value={analysisTeamAProfile.league} /> / <BilingualTerm value={analysisTeamAProfile.country} />
                       </span>
                     </div>
                   </div>
-                  <MetricBar label="进攻" value={teamAProfile.attack} />
-                  <MetricBar label="防守" value={teamAProfile.defense} tone="blue" />
-                  <MetricBar label="状态" value={teamAProfile.form} tone="amber" />
+                  <MetricBar label="进攻" value={analysisTeamAProfile.attack} />
+                  <MetricBar label="防守" value={analysisTeamAProfile.defense} tone="blue" />
+                  <MetricBar label="状态" value={analysisTeamAProfile.form} tone="amber" />
                   <div className="recent-form">
-                    {teamAProfile.recent.map((item, index) => (
+                    {analysisTeamAProfile.recent.map((item, index) => (
                       <span className={item} key={`${item}-${index}`}>
                         {item}
                       </span>
@@ -3707,20 +4032,20 @@ export default function Home() {
 
                 <div className="team-state-card">
                   <div className="team-state-head">
-                    <TeamBadge team={teamBProfile} />
+                    <TeamBadge team={analysisTeamBProfile} />
                     <div>
-                      <strong>{teamBProfile.name}</strong>
+                      <strong><FootballName name={analysisTeamBProfile.name} /></strong>
                       <span className="team-meta-line">
-                        <TeamCountryFlag team={teamBProfile} compact />
-                        {teamBProfile.league} / {teamBProfile.country}
+                        <TeamCountryFlag team={analysisTeamBProfile} compact />
+                        <BilingualTerm value={analysisTeamBProfile.league} /> / <BilingualTerm value={analysisTeamBProfile.country} />
                       </span>
                     </div>
                   </div>
-                  <MetricBar label="进攻" value={teamBProfile.attack} />
-                  <MetricBar label="防守" value={teamBProfile.defense} tone="blue" />
-                  <MetricBar label="状态" value={teamBProfile.form} tone="amber" />
+                  <MetricBar label="进攻" value={analysisTeamBProfile.attack} />
+                  <MetricBar label="防守" value={analysisTeamBProfile.defense} tone="blue" />
+                  <MetricBar label="状态" value={analysisTeamBProfile.form} tone="amber" />
                   <div className="recent-form">
-                    {teamBProfile.recent.map((item, index) => (
+                    {analysisTeamBProfile.recent.map((item, index) => (
                       <span className={item} key={`${item}-${index}`}>
                         {item}
                       </span>
@@ -3730,31 +4055,37 @@ export default function Home() {
               </div>
 
               <div className="comparison-board">
-                <ComparisonRow label="进攻火力" left={teamAProfile.attack} right={teamBProfile.attack} />
-                <ComparisonRow label="防守稳定" left={teamAProfile.defense} right={teamBProfile.defense} />
-                <ComparisonRow label="体能余量" left={teamAProfile.fitness} right={teamBProfile.fitness} />
-                <ComparisonRow label="控球能力" left={teamAProfile.possession} right={teamBProfile.possession} />
-                <ComparisonRow label="压迫强度" left={teamAProfile.press} right={teamBProfile.press} />
-                <ComparisonRow label="伤病安全" left={teamAProfile.injurySafety} right={teamBProfile.injurySafety} />
+                <ComparisonRow label="进攻火力" left={analysisTeamAProfile.attack} right={analysisTeamBProfile.attack} />
+                <ComparisonRow label="防守稳定" left={analysisTeamAProfile.defense} right={analysisTeamBProfile.defense} />
+                <ComparisonRow label="体能余量" left={analysisTeamAProfile.fitness} right={analysisTeamBProfile.fitness} />
+                <ComparisonRow label="控球能力" left={analysisTeamAProfile.possession} right={analysisTeamBProfile.possession} />
+                <ComparisonRow label="压迫强度" left={analysisTeamAProfile.press} right={analysisTeamBProfile.press} />
+                <ComparisonRow label="伤病安全" left={analysisTeamAProfile.injurySafety} right={analysisTeamBProfile.injurySafety} />
               </div>
 
               <div className="xg-strip">
                 <div>
                   <Zap size={15} aria-hidden="true" />
-                  <span>{teamAProfile.name} xG</span>
-                  <strong>{teamAProfile.xgFor.toFixed(2)}</strong>
+                  <span><FootballName name={analysisTeamAProfile.name} /> xG</span>
+                  <strong>{analysisTeamAProfile.xgFor.toFixed(2)}</strong>
                 </div>
                 <div>
                   <Dumbbell size={15} aria-hidden="true" />
                   <span>xGA</span>
-                  <strong>{teamAProfile.xgAgainst.toFixed(2)} / {teamBProfile.xgAgainst.toFixed(2)}</strong>
+                  <strong>{analysisTeamAProfile.xgAgainst.toFixed(2)} / {analysisTeamBProfile.xgAgainst.toFixed(2)}</strong>
                 </div>
                 <div>
                   <Swords size={15} aria-hidden="true" />
-                  <span>{teamBProfile.name} xG</span>
-                  <strong>{teamBProfile.xgFor.toFixed(2)}</strong>
+                  <span><FootballName name={analysisTeamBProfile.name} /> xG</span>
+                  <strong>{analysisTeamBProfile.xgFor.toFixed(2)}</strong>
                 </div>
               </div>
+                </>
+              ) : (
+                <div className="data-quality-note" role="status">
+                  球队攻防评分、近期战绩和 xG 尚未通过正式来源核验，相关演示数字已隐藏。
+                </div>
+              )}
             </div>
           </div>
 
@@ -3762,7 +4093,7 @@ export default function Home() {
             <div className="panel-header">
               <div className="panel-title">
                 <Swords size={18} aria-hidden="true" />
-                <h2>球员对位与克制链</h2>
+                <h2><UiBilingual zh="球员对位与克制链" en="Player Matchups & Tactical Edges" /></h2>
               </div>
               <div className="matchup-tools">
                 <span className="status-pill compact">
@@ -3781,7 +4112,7 @@ export default function Home() {
                   ) : (
                     <Database size={14} aria-hidden="true" />
                   )}
-                  {eventDataStatus.loading ? "获取中" : "获取事件数据"}
+                  {eventDataStatus.loading ? <UiBilingual zh="获取中" en="Loading" compact /> : <UiBilingual zh="获取事件数据" en="Load Event Data" compact />}
                 </button>
               </div>
             </div>
@@ -3789,19 +4120,19 @@ export default function Home() {
               <div className="data-audit-strip">
                 <div>
                   <span>球队数据</span>
-                  <strong>{liveTeams.length ? "真实导入" : "Mock"}</strong>
+                  <strong>{useMockProfiles ? "完整演示" : hasVerifiedTeamMetrics ? "指标已核验" : liveTeams.length ? "仅元数据" : "等待数据"}</strong>
                 </div>
                 <div>
                   <span>事件对位</span>
-                  <strong>{eventData ? "真实样本" : "简化"}</strong>
+                  <strong>{eventData ? "真实样本" : useMockProfiles ? "演示模型" : "简化"}</strong>
                 </div>
                 <div>
                   <span>门将/点球</span>
-                  <strong>{eventData ? "真实样本" : "简化"}</strong>
+                  <strong>{eventData ? "真实样本" : useMockProfiles ? "演示模型" : "简化"}</strong>
                 </div>
                 <div>
                   <span>教练因素</span>
-                  <strong>简化</strong>
+                  <strong>{useMockProfiles ? "演示模型" : "简化"}</strong>
                 </div>
               </div>
 
@@ -3878,7 +4209,7 @@ export default function Home() {
                       <div className="event-player-card" key={`${player.playerId}-${player.team}`}>
                         <div className="event-player-card-head">
                           <div>
-                            <strong>{player.name}</strong>
+                            <strong><FootballName name={player.name} type="player" /></strong>
                             <span>
                               {player.team} / {player.position || "位置未知"} /{" "}
                               {player.heightCm ? `${player.heightCm}cm` : "身高缺失"} / {preferredFootLabel(player.preferredFoot)}
@@ -3920,7 +4251,7 @@ export default function Home() {
                     <div className="event-heatmap-card">
                       <div className="event-heatmap-head">
                         <div>
-                          <strong>{featuredEventPlayer.name} 事件热区</strong>
+                          <strong><FootballName name={featuredEventPlayer.name} type="player" /> <UiBilingual zh="事件热区" en="Event Heatmap" compact /></strong>
                           <span>按 StatsBomb 120x80 球场坐标聚合</span>
                         </div>
                         <span>{featuredEventPlayer.heatmap.length} 个热点</span>
@@ -3955,17 +4286,17 @@ export default function Home() {
                 </div>
               ) : null}
 
-              {!hasVerifiedTeamMetrics || !hasVerifiedPlayerMetrics ? (
+              {!hasAnalysisTeamMetrics || !hasAnalysisPlayerMetrics ? (
                 <div className="data-quality-note" role="status">
                   球员对位、点球、战术克制和教练评分等待已核验的真实指标，当前不生成推测数值。
                 </div>
               ) : null}
-              {hasVerifiedPlayerMetrics && keeperPenaltyInsights.length === 0 ? (
+              {hasAnalysisPlayerMetrics && keeperPenaltyInsights.length === 0 ? (
                 <div className="data-quality-note" role="status">
                   暂无可核验的点球样本，点球命中率和扑救率保持留空。
                 </div>
               ) : null}
-              {teamAProfile.coach || teamBProfile.coach ? (
+              {!useMockProfiles && (analysisTeamAProfile.coach || analysisTeamBProfile.coach) ? (
                 <div className="data-quality-note" role="status">
                   当前主教练身份已导入；阵型弹性、换人影响和临场响应没有正式统计时不生成评分。
                 </div>
@@ -3984,12 +4315,12 @@ export default function Home() {
                     </div>
                     <div className="duel-line">
                       <div>
-                        <strong>{matchup.attacker.name}</strong>
+                        <strong><FootballName name={matchup.attacker.name} type="player" translation={matchup.attacker.nameZh} /></strong>
                         <span>{matchup.attacker.role}</span>
                       </div>
                       <b>vs</b>
                       <div>
-                        <strong>{matchup.defender.name}</strong>
+                        <strong><FootballName name={matchup.defender.name} type="player" translation={matchup.defender.nameZh} /></strong>
                         <span>{matchup.defender.role}</span>
                       </div>
                     </div>
@@ -4004,7 +4335,10 @@ export default function Home() {
                   <div className="keeper-card" key={`${index}-${item.keeper.name}-${item.shooter.name}`}>
                     <div>
                       <Goal size={15} aria-hidden="true" />
-                      <span>{item.shooter.name} 射门 vs {item.keeper.name}</span>
+                      <span>
+                        <FootballName name={item.shooter.name} type="player" translation={item.shooter.nameZh} /> 射门 vs{" "}
+                        <FootballName name={item.keeper.name} type="player" translation={item.keeper.nameZh} />
+                      </span>
                     </div>
                     <ComparisonRow label="射门质量 / 扑救覆盖" left={item.shotValue} right={item.saveValue} />
                     <div className="penalty-row">
@@ -4030,7 +4364,7 @@ export default function Home() {
               <div className="coach-grid">
                 {coachProfiles.map((coach) => (
                   <div className="coach-card" key={coach.teamName}>
-                    <strong>{coach.teamName}</strong>
+                    <strong><FootballName name={coach.teamName} /></strong>
                     <span>{coach.risk}</span>
                     <MetricBar label="阵型弹性" value={coach.flexibility} />
                     <MetricBar label="换人影响" value={coach.substitution} tone="blue" />
@@ -4045,37 +4379,39 @@ export default function Home() {
             <div className="panel-header">
               <div className="panel-title">
                 <UserRoundCheck size={18} aria-hidden="true" />
-                <h2>球员状态</h2>
+                <h2><UiBilingual zh="球员状态" en="Player Status" /></h2>
               </div>
               <button className="panel-action-button" type="button" onClick={() => setActiveModal({ type: "importPlayers" })}>
                 <Upload size={14} aria-hidden="true" />
-                导入球员数据
+                <UiBilingual zh="导入球员数据" en="Import Players" compact />
               </button>
             </div>
             <div className="panel-body player-columns">
               <div>
                 <div className="player-column-title">
-                  {teamAProfile.name}
+                  <FootballName name={analysisTeamAProfile.name} />
                   {playerOverrides.teamA ? <span>已导入</span> : null}
                 </div>
                 {teamAPlayers.length ? teamAPlayers.map((player) => (
                     <PlayerCard
                       player={player}
-                      onOpen={() => setActiveModal({ type: "player", player, team: teamAProfile })}
-                      key={`${teamAProfile.id}-${player.name}`}
+                      allowMock={useMockProfiles}
+                      onOpen={() => setActiveModal({ type: "player", player, team: analysisTeamAProfile })}
+                      key={`${analysisTeamAProfile.id}-${player.name}`}
                     />
                   )) : <p className="team-roster-empty">暂无真实球员名单，等待云端数据刷新或手动导入。</p>}
               </div>
               <div>
                 <div className="player-column-title">
-                  {teamBProfile.name}
+                  <FootballName name={analysisTeamBProfile.name} />
                   {playerOverrides.teamB ? <span>已导入</span> : null}
                 </div>
                 {teamBPlayers.length ? teamBPlayers.map((player) => (
                     <PlayerCard
                       player={player}
-                      onOpen={() => setActiveModal({ type: "player", player, team: teamBProfile })}
-                      key={`${teamBProfile.id}-${player.name}`}
+                      allowMock={useMockProfiles}
+                      onOpen={() => setActiveModal({ type: "player", player, team: analysisTeamBProfile })}
+                      key={`${analysisTeamBProfile.id}-${player.name}`}
                     />
                   )) : <p className="team-roster-empty">暂无真实球员名单，等待云端数据刷新或手动导入。</p>}
               </div>
@@ -4089,7 +4425,7 @@ export default function Home() {
             <div className="panel-header">
               <div className="panel-title">
                 <FileText size={18} aria-hidden="true" />
-                <h2>分析报告</h2>
+                <h2><UiBilingual zh="分析报告" en="Analysis Report" /></h2>
               </div>
               <div className="report-actions">
                 <button type="button" onClick={copyReport} disabled={!result}>
@@ -4109,6 +4445,14 @@ export default function Home() {
             <div className="panel-body">
               {result ? (
                 <>
+                  {result.prediction ? (
+                    <StructuredPredictionSummary
+                      prediction={result.prediction}
+                      provenance={result.provenance}
+                      teamA={form.teamA}
+                      teamB={form.teamB}
+                    />
+                  ) : null}
                   {result.cost.actual ? (
                     <div className="ai-cost-summary" aria-label="本次 AI 用量与成本">
                       <div>
@@ -4141,7 +4485,11 @@ export default function Home() {
                 <div className="empty-report">
                   <FileText size={34} aria-hidden="true" />
                   <strong>赛前报告席位</strong>
-                  <span>筛选球队后生成 mock report</span>
+                  <span>完成数据同步和预测后生成正式报告</span>
+                  <button className="btn btn-primary empty-report-action" type="button" onClick={() => setActiveView("match")}>
+                    <Send size={15} aria-hidden="true" />
+                    设置比赛并生成
+                  </button>
                 </div>
               )}
             </div>
@@ -4161,6 +4509,8 @@ export default function Home() {
                     ? "球员详情"
                     : activeModal.type === "account"
                       ? "用户账户"
+                    : activeModal.type === "mockBilling"
+                      ? "Mock 免费模式"
                     : activeModal.type === "payment"
                       ? "平台托管确认"
                       : activeModal.type === "byok"
@@ -4171,7 +4521,9 @@ export default function Home() {
                   {activeModal.type === "player"
                     ? activeModal.player.name
                     : activeModal.type === "account"
-                      ? accountUser ? "账户已登录" : "登录或注册"
+                      ? !accountConfigured ? "账户服务未配置" : accountUser ? "账户已登录" : "登录或注册"
+                    : activeModal.type === "mockBilling"
+                      ? "本次不会产生任何费用"
                     : activeModal.type === "payment"
                       ? "先确认费用，再启动预测"
                       : activeModal.type === "byok"
@@ -4189,9 +4541,9 @@ export default function Home() {
                 <div className="player-detail-head">
                   <PlayerAvatar player={activeModal.player} size="lg" />
                   <div>
-                    <strong>{activeModal.player.name}</strong>
+                    <strong><FootballName name={activeModal.player.name} type="player" translation={activeModal.player.nameZh} /></strong>
                     <span>
-                      {activeModal.player.role} / {activeModal.team.name} / {isPlayerMetricsVerified(activeModal.player) ? statusLabel(activeModal.player.status) : "状态待核验"}
+                      {activeModal.player.role} / {activeModal.team.name} / {activeModal.player.metricsStatus === "mock" ? "演示状态" : isPlayerMetricsVerified(activeModal.player) ? statusLabel(activeModal.player.status) : "状态待核验"}
                     </span>
                   </div>
                   <TeamBadge team={activeModal.team} />
@@ -4211,10 +4563,10 @@ export default function Home() {
                   </div>
                   <div>
                     <span>数据状态</span>
-                    <strong>{isPlayerMetricsVerified(activeModal.player) ? "已导入" : "待核验"}</strong>
+                    <strong>{activeModal.player.metricsStatus === "mock" ? "Mock 演示" : isPlayerMetricsVerified(activeModal.player) ? "已导入" : "待核验"}</strong>
                   </div>
                 </div>
-                {isPlayerMetricsVerified(activeModal.player) ? (
+                {isPlayerMetricsAvailable(activeModal.player, usingMockIntelligence) ? (
                   <>
                     <div className="detail-grid">
                       <div>
@@ -4222,8 +4574,8 @@ export default function Home() {
                         <strong>{activeModal.player.form}</strong>
                       </div>
                       <div>
-                        <span>预计出场时间</span>
-                        <strong>{activeModal.player.minutes}%</strong>
+                        <span>{activeModal.player.metricsStatus === "mock" ? "近 5 场分钟" : "预计出场时间"}</span>
+                        <strong>{activeModal.player.metricsStatus === "mock" ? `${activeModal.player.minutes} 分钟` : `${activeModal.player.minutes}%`}</strong>
                       </div>
                       <div>
                         <span>进球</span>
@@ -4243,7 +4595,36 @@ export default function Home() {
                       </div>
                     </div>
                     <MetricBar label="状态趋势" value={activeModal.player.form} />
-                    <MetricBar label="出场确定性" value={activeModal.player.minutes} tone="blue" />
+                    <MetricBar
+                      label={activeModal.player.metricsStatus === "mock" ? "出勤负荷" : "出场确定性"}
+                      value={activeModal.player.metricsStatus === "mock" ? clampMetric(activeModal.player.minutes / 4.5) : activeModal.player.minutes}
+                      tone="blue"
+                    />
+                    {activeModal.player.eventMetrics ? (
+                      <div className="mock-player-events">
+                        <div className="mock-player-event-grid">
+                          <div><span>射门 / Shots</span><strong>{activeModal.player.eventMetrics.shots}</strong></div>
+                          <div><span>xG</span><strong>{activeModal.player.eventMetrics.xg.toFixed(2)}</strong></div>
+                          <div><span>抢断 / Tackles</span><strong>{activeModal.player.eventMetrics.tackles}</strong></div>
+                          <div><span>拦截 / Interceptions</span><strong>{activeModal.player.eventMetrics.interceptions}</strong></div>
+                          <div><span>封堵 / Blocks</span><strong>{activeModal.player.eventMetrics.blocks}</strong></div>
+                          <div><span>被过 / Dribbled Past</span><strong>{activeModal.player.eventMetrics.dribbledPast}</strong></div>
+                        </div>
+                        {activeModal.player.heatmap?.length ? (
+                          <div className="mock-player-heatmap" aria-label="演示位置热区">
+                            <div className="heatmap-halfway" />
+                            <div className="heatmap-circle" />
+                            {activeModal.player.heatmap.map((point, index) => (
+                              <i
+                                key={`${point.x}:${point.y}:${index}`}
+                                style={{ left: `${point.x}%`, top: `${point.y}%`, opacity: point.intensity / 100 }}
+                              />
+                            ))}
+                            <span>演示位置热区 / Mock Heatmap</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </>
                 ) : (
                   <div className="data-quality-note" role="note">
@@ -4254,7 +4635,11 @@ export default function Home() {
               </div>
             ) : activeModal.type === "account" ? (
               <div className="modal-body">
-                {accountUser ? (
+                {!accountConfigured ? (
+                  <div className="data-quality-note" role="status">
+                    当前部署尚未配置 Supabase 账户服务。登录、注册和平台托管支付暂不可用；网站其余公开功能仍可浏览。
+                  </div>
+                ) : accountUser ? (
                   <>
                     <div className="confirm-summary"><div><span>当前账户</span><strong>{accountUser.email}</strong></div></div>
                     {accountCostSummary ? (
@@ -4278,6 +4663,16 @@ export default function Home() {
                   </>
                 )}
                 {accountMessage ? <p className="modal-note">{accountMessage}</p> : null}
+              </div>
+            ) : activeModal.type === "mockBilling" ? (
+              <div className="modal-body">
+                <div className="confirm-summary">
+                  <div><span>本次 Mock 费用</span><strong>¥0.00</strong></div>
+                  <div><span>支付订单</span><strong>不会创建</strong></div>
+                  <div><span>正式模式参考价</span><strong>{estimate?.formalModeEstimate ? currency(estimate.formalModeEstimate.estimatedUserChargeCents) : "请先估算"}</strong></div>
+                </div>
+                <p className="modal-note">正式模式参考价只是演示信息，不是支付授权，也不会调用 Supabase、Stripe、商业体育数据或真实 AI。</p>
+                <button className="btn btn-primary full" type="button" onClick={() => setActiveModal(null)}>确认免费演示</button>
               </div>
             ) : activeModal.type === "payment" ? (
               <div className="modal-body">
@@ -4323,14 +4718,14 @@ export default function Home() {
                     type="button"
                     onClick={() => setImportTarget("teamA")}
                   >
-                    导入到 A 队：{teamAProfile.name}
+                    <UiBilingual zh="导入到 A 队" en="Import to Team A" compact />：<FootballName name={teamAProfile.name} />
                   </button>
                   <button
                     className={importTarget === "teamB" ? "active" : ""}
                     type="button"
                     onClick={() => setImportTarget("teamB")}
                   >
-                    导入到 B 队：{teamBProfile.name}
+                    <UiBilingual zh="导入到 B 队" en="Import to Team B" compact />：<FootballName name={teamBProfile.name} />
                   </button>
                 </div>
 
@@ -4379,4 +4774,12 @@ export default function Home() {
       ) : null}
     </main>
   );
+}
+
+export default function Home() {
+  const [hasEnteredWorkspace, setHasEnteredWorkspace] = useState(false);
+
+  return hasEnteredWorkspace
+    ? <WorkspaceApp />
+    : <ExperienceGateway onEnter={() => setHasEnteredWorkspace(true)} />;
 }

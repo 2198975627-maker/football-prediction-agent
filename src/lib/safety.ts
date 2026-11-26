@@ -104,3 +104,12 @@ export function markComplete(steps: WorkflowStep[], id: string, detail?: string)
       : step
   );
 }
+
+export function markWorkflowStep(
+  steps: WorkflowStep[],
+  id: string,
+  status: WorkflowStep["status"],
+  detail?: string
+) {
+  return steps.map((step) => step.id === id ? { ...step, status, detail: detail ?? step.detail } : step);
+}

@@ -33,9 +33,9 @@ This document defines the preferred production path for users in mainland China.
 
 ### AI
 
-- Mainland default: Tencent TokenHub with the Hunyuan `hy3` model. Configure `AI_PROVIDER=hunyuan`, `HUNYUAN_API_KEY`, and the current input/output prices.
+- Mainland default: Tencent TokenHub with `deepseek-v4-flash`. Configure `AI_PROVIDER=deepseek`, `DEEPSEEK_API_KEY`, and the current input/output prices.
 - The server calls `https://tokenhub.tencentmaas.com/v1`; the API key is never sent to the browser.
-- Paid traffic remains blocked until both `HUNYUAN_INPUT_CENTS_PER_MILLION` and `HUNYUAN_OUTPUT_CENTS_PER_MILLION` are positive values. This avoids charging from stale or guessed model prices.
+- Paid traffic remains blocked until both `DEEPSEEK_INPUT_CENTS_PER_MILLION` and `DEEPSEEK_OUTPUT_CENTS_PER_MILLION` are positive values. This avoids charging from stale or guessed model prices.
 - Overseas optional: OpenAI, only where the account, server location, and end-user offering comply with OpenAI's supported-country policy.
 - Do not proxy an unsupported OpenAI offering into mainland production.
 

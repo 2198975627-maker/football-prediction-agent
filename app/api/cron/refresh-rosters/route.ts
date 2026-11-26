@@ -36,6 +36,10 @@ function isAuthorized(request: Request) {
   return expected.length === received.length && timingSafeEqual(expected, received);
 }
 
+function isProductionRuntime() {
+  return process.env.NODE_ENV === "production" || readText("APP_ENV") === "production";
+}
+
 function refreshSummary(stdout: string) {
   const values = Object.fromEntries(
     ["teams", "players", "roster-change-teams"].map((key) => {
@@ -51,6 +55,15 @@ function refreshSummary(stdout: string) {
 }
 
 export async function GET(request: Request) {
+  if (isProductionRuntime() && !readText("CRON_SECRET")) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      code: "ROSTER_CRON_DISABLED",
+      reason: "Cloud roster refresh is disabled until CRON_SECRET and Supabase storage are configured."
+    });
+  }
+
   if (!isAuthorized(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized cron request." }, { status: 401 });
   }

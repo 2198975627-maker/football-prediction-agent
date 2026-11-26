@@ -31,7 +31,16 @@ https://football-prediction-agent.vercel.app
    - `liveCostsEnabled` is `false`
    - `productionWarnings` is empty or only warns about the TheSportsDB demo key.
 
+Run `pnpm run preview:check` before deploying this mode. It accepts the built-in
+no-key fixture sources but fails if live prediction or charging was enabled by
+mistake. Run `pnpm run production:check` only when activating paid predictions.
+
 The current production deployment uses Supabase for the cloud roster cache and Vercel Cron for the daily refresh. The refresh runs at `0 16 * * *` UTC, which is `00:00` Beijing time. It does not use the local computer and does not call an AI model.
+
+In the free preview, the scheduled route returns `ROSTER_CRON_DISABLED` with
+`skipped=true` until `CRON_SECRET` and writable Supabase roster storage are
+configured. This keeps the deployment healthy without exposing an unprotected
+refresh endpoint or pretending that cloud persistence is active.
 
 ## Docker deployment
 
@@ -51,6 +60,7 @@ Then open `http://localhost:3000`.
 - `POST /api/player-events` imports a free StatsBomb Open Data historical event sample through a server-side proxy.
 - API-Football supports both direct dashboard authentication and the official RapidAPI transport.
 - football-data.org provides live fixtures, results, teams, standings, recent matches, and head-to-head context.
+- TheSportsDB public V1 and OpenLigaDB provide no-cost, server-side fixture discovery fallbacks. Their limited/community data does not satisfy the player-event quality gate by itself.
 - OpenAI Responses API analysis uses Structured Outputs, an evidence-only prompt, and `store: false`.
 - Supabase Auth uses server-managed HTTP-only access and refresh cookies.
 - Stripe Checkout, signed idempotent webhooks, prepaid orders, actual-token settlement, refunds, and an append-only ledger are implemented.

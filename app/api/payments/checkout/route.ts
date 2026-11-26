@@ -7,6 +7,9 @@ import { requestUser } from "@/src/lib/supabase-auth";
 import { attachStripeSession, createOrder, failPendingOrder, isPaymentConfigured, stripeClient } from "@/src/lib/payments";
 
 export async function POST(request: Request) {
+  if (process.env.PROVIDER_MODE !== "live") {
+    return NextResponse.json({ ok: false, error: "Mock 模式固定免费，不允许创建支付订单。" }, { status: 409 });
+  }
   if (!isPaymentConfigured()) return NextResponse.json({ ok: false, error: "支付服务尚未配置。" }, { status: 503 });
   const user = await requestUser(request);
   if (!user) return NextResponse.json({ ok: false, error: "请先登录。" }, { status: 401 });

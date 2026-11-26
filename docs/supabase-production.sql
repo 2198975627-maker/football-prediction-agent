@@ -280,7 +280,7 @@ create table if not exists public.football_ai_usage (
   user_id uuid not null references auth.users(id) on delete restrict,
   order_id uuid references public.football_payment_orders(id) on delete restrict,
   billing_mode text not null check (billing_mode in ('byok','platform')),
-  provider text not null check (provider in ('openai','hunyuan')),
+  provider text not null check (provider in ('openai','hunyuan','deepseek')),
   model text not null,
   response_id text,
   status text not null check (status in ('completed','failed')),
@@ -301,6 +301,9 @@ create table if not exists public.football_ai_usage (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
+alter table public.football_ai_usage drop constraint if exists football_ai_usage_provider_check;
+alter table public.football_ai_usage
+  add constraint football_ai_usage_provider_check check (provider in ('openai','hunyuan','deepseek'));
 create index if not exists football_ai_usage_user_idx on public.football_ai_usage(user_id, created_at desc);
 create index if not exists football_ai_usage_provider_idx on public.football_ai_usage(provider, model, created_at desc);
 alter table public.football_ai_usage enable row level security;

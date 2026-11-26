@@ -5,6 +5,7 @@ export type OfficialSportsProviderId =
   | "statsbomb-paid"
   | "football-data-org"
   | "thesportsdb"
+  | "openligadb"
   | "fbref"
   | "understat"
   | "sofifa"
@@ -202,12 +203,26 @@ export const officialSportsProviders: OfficialSportsProvider[] = [
     priority: 6,
     baseUrl: "https://www.thesportsdb.com/api.php",
     docsUrl: "https://www.thesportsdb.com/api.php",
-    authMode: "server-api-key",
-    requiredEnvKeys: ["THESPORTSDB_API_KEY"],
+    authMode: "open-data",
+    requiredEnvKeys: [],
     costModel: "free-demo",
-    capabilities: ["team-search", "team-metadata", "visual-assets"],
+    capabilities: ["team-search", "team-metadata", "fixtures", "visual-assets"],
     bestFor: ["队徽、球场、球队基础资料、前端选择器增强"],
     limitations: ["不是球员事件数据主源，不能支撑赛前概率模型的核心判断。"]
+  },
+  {
+    id: "openligadb",
+    name: "OpenLigaDB",
+    role: "fallback",
+    priority: 7,
+    baseUrl: "https://api.openligadb.de",
+    docsUrl: "https://openligadb.de/",
+    authMode: "open-data",
+    requiredEnvKeys: [],
+    costModel: "free-public",
+    capabilities: ["team-metadata", "fixtures", "standings"],
+    bestFor: ["德甲赛程与赛果免费交叉校验"],
+    limitations: ["社区维护且以德国赛事为主，不提供完整球员事件、伤停或实时阵容。"]
   },
   {
     id: "fbref",
@@ -400,14 +415,14 @@ export const officialFusionPlan: OfficialFusionStage[] = [
     id: "identity-resolution",
     name: "球队与比赛 ID 解析",
     description: "先把用户输入的队名、赛事和时间映射到各平台的 team id、season id、fixture id。",
-    providers: ["api-football", "sportmonks", "anysport", "nami-sports", "football-data-org", "juhe-football", "feijing-sports", "apiballs", "thesportsdb", "fbref", "soccerdata"],
+    providers: ["api-football", "sportmonks", "anysport", "nami-sports", "football-data-org", "juhe-football", "feijing-sports", "apiballs", "thesportsdb", "openligadb", "fbref", "soccerdata"],
     requiredCapabilities: ["team-search", "team-metadata", "fixtures"]
   },
   {
     id: "match-context",
     name: "赛程、积分、历史交锋",
     description: "从多个正式 API 拉取赛程、积分、近期赛果、H2H，并记录冲突来源。",
-    providers: ["api-football", "sportmonks", "anysport", "nami-sports", "football-data-org", "juhe-football", "feijing-sports", "apiballs", "fbref", "understat", "soccerdata"],
+    providers: ["api-football", "sportmonks", "anysport", "nami-sports", "football-data-org", "juhe-football", "feijing-sports", "apiballs", "openligadb", "thesportsdb", "fbref", "understat", "soccerdata"],
     requiredCapabilities: ["fixtures", "standings", "h2h"]
   },
   {
@@ -435,7 +450,9 @@ export const officialFusionPlan: OfficialFusionStage[] = [
 
 export function getOfficialSportsProviderStatuses(): OfficialSportsProviderStatus[] {
   const pythonAnalyticsEnabled = process.env.PYTHON_ANALYTICS_ENABLED === "true";
-  const runtimeIntegrated = new Set<OfficialSportsProviderId>(["api-football", "sportmonks", "football-data-org", "anysport", "statsbomb-open", "statsbomb-paid", "thesportsdb"]);
+  const runtimeIntegrated = new Set<OfficialSportsProviderId>([
+    "api-football", "sportmonks", "football-data-org", "anysport", "statsbomb-open", "statsbomb-paid", "thesportsdb", "openligadb"
+  ]);
 
   return officialSportsProviders.map((provider) => {
     const apiFootballConfigured = provider.id === "api-football"

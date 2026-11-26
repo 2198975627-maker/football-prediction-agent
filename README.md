@@ -80,7 +80,7 @@ The current app skeleton is safe-by-default:
 - No live search calls
 - No live payment capture
 
-The team selector can manually import public team records through the server-side `POST /api/live-team` proxy. It currently uses TheSportsDB with `THESPORTSDB_API_KEY` when configured, or the provider's public demo key for local development. The key is never sent to browser code.
+The team selector can manually import public team records through the server-side `POST /api/live-team` proxy. It currently uses TheSportsDB with `THESPORTSDB_API_KEY` when configured, or the provider's public demo key for local development. The key is never sent to browser code. When TheSportsDB supplies a Wikidata entity ID, the server batches those IDs through the free Wikidata Action API to fill a simplified Chinese player label and a missing height. Original player names remain the primary display value, and this enrichment does not call an AI model.
 
 The daily cloud roster job can also use `API_FOOTBALL_KEY` or
 `RAPIDAPI_FOOTBALL_KEY`. It rotates a bounded set of teams through API-Football's
@@ -110,12 +110,24 @@ Then open `http://localhost:3000`.
 Available API routes:
 
 - `GET /api/health`
+- `GET /api/fixtures?date=YYYY-MM-DD`
 - `POST /api/estimate`
 - `POST /api/predict`
 - `POST /api/live-team`
 - `POST /api/player-events`
 - `GET /api/sports-data-sources`
 - `GET /api/costs/summary` (authenticated)
+
+## Free Fixture Coverage
+
+The fixture picker merges server-side sources and never sends provider keys to the browser:
+
+- `football-data.org` free tier: Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, and other listed free competitions.
+- `OpenLigaDB`: no-key Bundesliga fixture and result cross-checking under its open database license.
+- `TheSportsDB` V1 demo key: limited daily discovery for the five major European leagues, Chinese Super League, Saudi Pro League, and MLS. The free response is partial and is not treated as player-event evidence.
+- `API-Football` or `AnySport` free registered keys: optional broader coverage for Chinese Super League, Saudi Pro League, MLS, lineups, and match context.
+
+TheSportsDB and OpenLigaDB are attributed in each fixture card. Their community data helps users find a match; official prediction remains blocked until the structured-data quality gate passes.
 
 ## Deployment
 
@@ -130,8 +142,12 @@ Start with `docs/deployment.md` for Vercel and Docker steps.
 Before sharing a public URL, run:
 
 ```bash
+pnpm run preview:check
 pnpm run deploy:check
 ```
+
+`preview:check` verifies the no-charge public fixture browser. `production:check`
+is the separate, stricter gate for authenticated AI predictions and paid traffic.
 
 Production health endpoint:
 

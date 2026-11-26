@@ -1,5 +1,5 @@
 import type { CostBreakdown, CostEstimate, PredictionInput } from "./schemas";
-import { getRuntimeConfig } from "./runtime";
+import { getBillingRuntimeConfig } from "./billing-config.ts";
 
 function sumBreakdown(breakdown: CostBreakdown) {
   return (
@@ -11,7 +11,10 @@ function sumBreakdown(breakdown: CostBreakdown) {
 }
 
 export function estimateCost(input: PredictionInput): CostEstimate {
-  const config = getRuntimeConfig();
+  const config = {
+    ...getBillingRuntimeConfig(),
+    providerMode: process.env.PROVIDER_MODE === "live" ? "live" as const : "mock" as const
+  };
   const breakdown: CostBreakdown =
     input.analysisDepth === "deep"
       ? {
@@ -33,6 +36,30 @@ export function estimateCost(input: PredictionInput): CostEstimate {
     config.minimumChargeCents
   );
 
+  if (config.providerMode === "mock") {
+    return {
+      providerMode: "mock",
+      estimatedApiCostCents: 0,
+      estimatedUserChargeCents: 0,
+      minimumChargeCents: 0,
+      markupMultiplier: 0,
+      currency: "CNY",
+      breakdown: { sportsDataCents: 0, searchCents: 0, extractionCents: 0, modelCents: 0 },
+      formalModeEstimate: {
+        estimatedApiCostCents,
+        estimatedUserChargeCents,
+        minimumChargeCents: config.minimumChargeCents,
+        markupMultiplier: config.billingMarkupMultiplier,
+        breakdown
+      },
+      notes: [
+        "当前为 Mock 模式，本次费用固定为 ¥0.00，不会扣费。",
+        `正式平台托管模式参考价为 max(API 成本 x ${config.billingMarkupMultiplier}, 最低单次费用)。`,
+        "正式模式参考价仅用于产品展示，不代表已授权、已支付或已结算。"
+      ]
+    };
+  }
+
   return {
     providerMode: config.providerMode,
     estimatedApiCostCents,
@@ -42,7 +69,7 @@ export function estimateCost(input: PredictionInput): CostEstimate {
     currency: "CNY",
     breakdown,
     notes: [
-      config.providerMode === "mock" ? "当前为 mock provider，不会产生真实 API 费用。" : "实时模式最终按服务端记录的实际模型用量结算。",
+      "实时模式最终按服务端记录的实际模型用量结算。",
       `真实平台托管模式上线后，最终收费 = max(实际 API 成本 x ${config.billingMarkupMultiplier}, 最低单次费用)。`,
       "客户端提交的费用不会被信任，最终费用必须由服务端 provider 记录计算。"
     ]
@@ -54,6 +81,9 @@ export function formatCny(cents: number) {
 }
 
 export function assertBillingGate(input: PredictionInput, estimate: CostEstimate) {
+  if (estimate.providerMode === "mock") {
+    return { ok: true, message: "Mock mode is free and does not require payment authorization." };
+  }
   if (input.billingMode === "platform" && input.maxUserChargeCents < estimate.estimatedUserChargeCents) {
     return {
       ok: false,

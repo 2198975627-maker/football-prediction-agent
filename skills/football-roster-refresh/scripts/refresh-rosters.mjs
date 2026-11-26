@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 
 import process from "node:process";
+import {
+  fetchWikidataPlayerMetadata,
+  normalizeHeightCm
+} from "../../../src/lib/player-metadata.mjs";
 
 const BASE_URL = "https://www.thesportsdb.com/api/v1/json";
 const API_FOOTBALL_DIRECT_BASE_URL = "https://v3.football.api-sports.io";
 const PUBLIC_THESPORTSDB_DEMO_KEY = "123";
 const REQUEST_TIMEOUT_MS = 12_000;
 const DEFAULT_API_FOOTBALL_TEAM_LIMIT = 16;
+const DEFAULT_THESPORTSDB_PLAYER_LIMIT = 12;
 
 const DEFAULT_LEAGUES = [
   "English Premier League",
@@ -126,6 +131,10 @@ function parseArgs(argv) {
       40,
       Math.max(0, Number(readEnv("ROSTER_API_FOOTBALL_TEAM_LIMIT", String(DEFAULT_API_FOOTBALL_TEAM_LIMIT))) || 0)
     ),
+    sportsDbPlayerLimit: Math.min(
+      40,
+      Math.max(0, Number(readEnv("ROSTER_THESPORTSDB_PLAYER_LIMIT", String(DEFAULT_THESPORTSDB_PLAYER_LIMIT))) || 0)
+    ),
     dryRun: false
   };
 
@@ -143,6 +152,9 @@ function parseArgs(argv) {
       index += 1;
     } else if (item === "--api-football-team-limit" && next) {
       args.apiFootballTeamLimit = Math.min(40, Math.max(0, Number(next) || 0));
+      index += 1;
+    } else if (item === "--sportsdb-player-limit" && next) {
+      args.sportsDbPlayerLimit = Math.min(40, Math.max(0, Number(next) || 0));
       index += 1;
     } else if (item === "--dry-run") {
       args.dryRun = true;
@@ -465,16 +477,6 @@ function finiteNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function parseHeightCm(value) {
-  const text = toText(value, 30).toLowerCase();
-  if (!text) return null;
-  const amount = Number(text.replace(",", ".").match(/\d+(?:\.\d+)?/)?.[0]);
-  if (!Number.isFinite(amount)) return null;
-  if (text.includes("ft") || text.includes("'")) return null;
-  const centimeters = text.includes("m") && !text.includes("cm") && amount < 3 ? amount * 100 : amount;
-  return centimeters >= 140 && centimeters <= 230 ? Math.round(centimeters) : null;
-}
-
 function ageFromBirthDate(value) {
   const birthDate = new Date(toText(value, 30));
   if (!Number.isFinite(birthDate.getTime())) return null;
@@ -487,12 +489,24 @@ function ageFromBirthDate(value) {
   return age >= 14 && age <= 60 ? age : null;
 }
 
-function normalizePlayer(player, index, maxPlayersPerTeam) {
+function preferredFoot(value) {
+  const foot = toText(value, 20).toLowerCase();
+  if (foot.includes("left")) return "left";
+  if (foot.includes("right")) return "right";
+  if (foot.includes("both")) return "both";
+  return "unknown";
+}
+
+function normalizePlayer(player, index, metadata) {
   const role = toText(player.strPosition, 60) || "Player";
   const shirtNumber = finiteNumber(player.strNumber);
+  const providerHeight = normalizeHeightCm(player.strHeight);
+  const heightCm = providerHeight ?? metadata?.heightCm ?? null;
+  const wikidataId = toText(player.idWikidata, 24);
   return {
     id: toText(player.idPlayer, 40) || `player-${index + 1}`,
     name: toText(player.strPlayer, 100) || `Player ${index + 1}`,
+    nameZh: metadata?.nameZh ?? "",
     role,
     status: "ready",
     form: 70,
@@ -503,13 +517,17 @@ function normalizePlayer(player, index, maxPlayersPerTeam) {
     avatarUrl: toText(player.strCutout || player.strThumb, 400),
     age: ageFromBirthDate(player.dateBorn || player.strBirthDate),
     shirtNumber: shirtNumber !== null && shirtNumber >= 0 && shirtNumber <= 99 ? Math.round(shirtNumber) : null,
-    heightCm: parseHeightCm(player.strHeight),
+    heightCm,
+    preferredFoot: preferredFoot(player.strSide),
     metricsStatus: "placeholder",
     rosterStatus: player.idPlayer ? "provider" : "placeholder",
-    note: "Roster entry refreshed from TheSportsDB; performance metrics require an official statistics provider.",
+    note: `Roster entry refreshed from TheSportsDB${metadata?.nameZh || (metadata?.heightCm && !providerHeight) ? " and enriched by Wikidata" : ""}; performance metrics require an official statistics provider.`,
     source: {
       provider: "TheSportsDB",
-      providerPlayerId: toText(player.idPlayer, 40)
+      providerPlayerId: toText(player.idPlayer, 40),
+      wikidataId,
+      metadataUrl: metadata?.sourceUrl ?? (wikidataId ? `https://www.wikidata.org/wiki/${wikidataId}` : ""),
+      heightProvider: providerHeight ? "TheSportsDB" : metadata?.heightCm ? "Wikidata" : ""
     }
   };
 }
@@ -555,19 +573,12 @@ function normalizeApiFootballCoach(coach) {
   };
 }
 
-function placeholderPlayers(teamName) {
-  return ["Forward", "Midfielder", "Defensive Midfielder", "Defender", "Goalkeeper"].map((role, index) =>
-    normalizePlayer({ strPlayer: `${teamName} ${role}`, strPosition: role }, index)
-  );
-}
-
 function normalizeTeam(team, players = []) {
   const name = toText(team.strTeam, 100) || "Unknown Team";
   const league = toText(team.strLeague, 100) || "Unknown League";
   const country = toText(team.strCountry, 80) || "Unknown";
   const seed = hash(`${team.idTeam}:${name}:${league}:${country}`);
   const kind = inferKind(name, country, league);
-  const normalizedPlayers = players.length ? players : placeholderPlayers(name);
 
   return {
     id: `daily-${toText(team.idTeam, 40) || seed}`,
@@ -596,7 +607,7 @@ function normalizeTeam(team, players = []) {
     xgFor: Number((1.1 + (seed % 118) / 100).toFixed(2)),
     xgAgainst: Number((0.72 + ((seed >> 3) % 96) / 100).toFixed(2)),
     recent: ["胜", "平", "负", "胜", "胜"],
-    players: normalizedPlayers
+    players
   };
 }
 
@@ -707,14 +718,62 @@ async function fetchPlayers(apiKey, team, maxPlayersPerTeam) {
   if (!team.idTeam || team.idTeam.startsWith("fallback-")) return [];
   const url = makeUrl(apiKey, "lookup_all_players.php", { id: team.idTeam });
   const data = await fetchJson(url);
-  const blockedRoles = ["coach", "manager", "president", "chairman", "assistant"];
-  return (data.player ?? [])
+  const blockedRoles = [
+    "coach", "manager", "president", "chairman", "assistant", "ceo", "chief",
+    "director", "operations", "executive", "owner", "board", "staff", "scout",
+    "physio", "doctor", "analyst", "administrator", "coordinator", "secretary"
+  ];
+  const rawPlayers = (data.player ?? [])
     .filter((player) => {
       const role = toText(player.strPosition, 60).toLowerCase();
       return !blockedRoles.some((blocked) => role.includes(blocked));
     })
-    .slice(0, maxPlayersPerTeam)
-    .map((player, index) => normalizePlayer(player, index, maxPlayersPerTeam));
+    .slice(0, maxPlayersPerTeam);
+
+  return rawPlayers.map((player, index) =>
+    normalizePlayer(player, index, undefined)
+  );
+}
+
+async function enrichPlayerMetadata(teams) {
+  const wikidataIds = Array.from(new Set(
+    teams.flatMap((team) => team.players.map((player) => player?.source?.wikidataId).filter(Boolean))
+  ));
+  if (!wikidataIds.length) return teams;
+
+  const metadata = new Map();
+  for (let index = 0; index < wikidataIds.length; index += 50) {
+    try {
+      const batch = await fetchWikidataPlayerMetadata(wikidataIds.slice(index, index + 50), { timeoutMs: 12_000 });
+      batch.forEach((value, key) => metadata.set(key, value));
+    } catch (error) {
+      console.warn(`[roster-refresh] Wikidata batch enrichment unavailable: ${error instanceof Error ? error.message : error}`);
+      break;
+    }
+  }
+  if (!metadata.size) return teams;
+
+  return teams.map((team) => ({
+    ...team,
+    players: team.players.map((player) => {
+      const item = metadata.get(player?.source?.wikidataId);
+      if (!item) return player;
+      const addedHeight = !Number.isFinite(player.heightCm) && Number.isFinite(item.heightCm);
+      return {
+        ...player,
+        nameZh: player.nameZh || item.nameZh || "",
+        heightCm: player.heightCm ?? item.heightCm ?? null,
+        note: item.nameZh || addedHeight
+          ? "Roster entry refreshed from TheSportsDB and enriched by Wikidata; performance metrics require an official statistics provider."
+          : player.note,
+        source: {
+          ...(player.source ?? {}),
+          metadataUrl: item.sourceUrl,
+          heightProvider: addedHeight ? "Wikidata" : player.source?.heightProvider ?? ""
+        }
+      };
+    })
+  }));
 }
 
 async function fetchApiFootballTeamData(config, team, maxPlayersPerTeam) {
@@ -820,6 +879,22 @@ function mergePreviousProviderData(team, previousTeam) {
     merged.rosterStatus = "provider";
     merged.rosterUpdatedAt = previousTeam.rosterUpdatedAt ?? previousTeam.generatedAt ?? null;
     merged.source = previousTeam.source || merged.source;
+  } else if (hasProviderRoster(merged) && hasProviderRoster(previousTeam)) {
+    const previousPlayers = new Map(previousTeam.players.map((player) => [playerKey(player), player]));
+    merged.players = merged.players.map((player) => {
+      const previousPlayer = previousPlayers.get(playerKey(player));
+      if (!previousPlayer) return player;
+      return {
+        ...player,
+        nameZh: player.nameZh || previousPlayer.nameZh || "",
+        heightCm: player.heightCm ?? previousPlayer.heightCm ?? null,
+        preferredFoot: player.preferredFoot !== "unknown" ? player.preferredFoot : previousPlayer.preferredFoot ?? "unknown",
+        source: {
+          ...(previousPlayer.source ?? {}),
+          ...(player.source ?? {})
+        }
+      };
+    });
   }
   return merged;
 }
@@ -859,11 +934,16 @@ function diffSnapshots(previous, current) {
       const oldPlayer = oldPlayers.get(playerId);
       if (!oldPlayer) {
         addedPlayers.push({ name: player.name, role: player.role });
-      } else if ((oldPlayer.role ?? "") !== (player.role ?? "") || (oldPlayer.avatarUrl ?? "") !== (player.avatarUrl ?? "")) {
+      } else if (
+        (oldPlayer.role ?? "") !== (player.role ?? "")
+        || (oldPlayer.avatarUrl ?? "") !== (player.avatarUrl ?? "")
+        || (oldPlayer.nameZh ?? "") !== (player.nameZh ?? "")
+        || (oldPlayer.heightCm ?? null) !== (player.heightCm ?? null)
+      ) {
         changedPlayers.push({
           name: player.name,
-          before: { role: oldPlayer.role ?? "", avatarUrl: oldPlayer.avatarUrl ?? "" },
-          after: { role: player.role ?? "", avatarUrl: player.avatarUrl ?? "" }
+          before: { role: oldPlayer.role ?? "", avatarUrl: oldPlayer.avatarUrl ?? "", nameZh: oldPlayer.nameZh ?? "", heightCm: oldPlayer.heightCm ?? null },
+          after: { role: player.role ?? "", avatarUrl: player.avatarUrl ?? "", nameZh: player.nameZh ?? "", heightCm: player.heightCm ?? null }
         });
       }
     });
@@ -913,13 +993,13 @@ async function main() {
 
   console.log(`[roster-refresh] start ${startedAt}`);
   console.log(`[roster-refresh] provider TheSportsDB (${apiKeyMode})`);
+  console.log(`[roster-refresh] TheSportsDB player lookup limit=${args.sportsDbPlayerLimit}`);
   console.log(`[roster-refresh] API-Football ${apiFootball ? `${apiFootball.authMode}, limit=${args.apiFootballTeamLimit}` : "not configured"}`);
   console.log("[roster-refresh] storage cloud-only");
 
   const previous = await readPreviousCloudSnapshot();
   const previousTeams = snapshotTeamLookup(previous);
   const rawTeams = await fetchTeams(apiKey, args.maxTeams);
-  const playerLookupLimit = apiKeyMode === "public-demo" ? 0 : Math.min(40, rawTeams.length);
   const missingRosterIndices = rawTeams
     .map((team, index) => ({ index, previousTeam: previousTeamFor(team, previousTeams) }))
     .filter(({ previousTeam }) => !hasProviderRoster(previousTeam))
@@ -936,44 +1016,51 @@ async function main() {
     { length: rawTeams.length },
     (_, offset) => (refreshFallbackStart + offset) % rawTeams.length
   );
+  const sportsDbTargets = new Set(
+    [...orderedMissingIndices, ...refreshFallbackIndices]
+      .filter((index, position, values) => values.indexOf(index) === position)
+      .slice(0, Math.min(args.sportsDbPlayerLimit, rawTeams.length))
+  );
   const apiFootballTargets = new Set(
     [...orderedMissingIndices, ...refreshFallbackIndices]
       .filter((index, position, values) => values.indexOf(index) === position)
       .slice(0, apiFootball ? args.apiFootballTeamLimit : 0)
   );
 
-  const teams = await mapConcurrent(rawTeams, args.concurrency, async (team, index) => {
+  let teams = await mapConcurrent(rawTeams, args.concurrency, async (team, index) => {
     const previousTeam = previousTeamFor(team, previousTeams);
+    let players = [];
     try {
-      const players = index < playerLookupLimit ? await fetchPlayers(apiKey, team, args.maxPlayersPerTeam) : [];
-      let normalized = normalizeTeam(team, players);
-      if (!players.length && apiFootball && apiFootballTargets.has(index)) {
-        try {
-          const providerData = await fetchApiFootballTeamData(apiFootball, team, args.maxPlayersPerTeam);
-          if (providerData) {
-            normalized = {
-              ...normalized,
-              source: normalized.source === "TheSportsDB" ? "TheSportsDB + API-Football" : "API-Football + Curated Catalog",
-              badgeUrl: normalized.badgeUrl || providerData.badgeUrl,
-              rosterStatus: providerData.players.length ? "provider" : normalized.rosterStatus,
-              players: providerData.players.length ? providerData.players : normalized.players,
-              coach: providerData.coach,
-              providerTeamIds: {
-                apiFootball: providerData.providerTeamId
-              },
-              rosterUpdatedAt: providerData.players.length ? new Date().toISOString() : null
-            };
-          }
-        } catch (error) {
-          console.warn(`[roster-refresh] API-Football enrichment failed for ${team.strTeam ?? team.idTeam}: ${error instanceof Error ? error.message : error}`);
-        }
-      }
-      return mergePreviousProviderData(normalized, previousTeam);
+      players = sportsDbTargets.has(index) ? await fetchPlayers(apiKey, team, args.maxPlayersPerTeam) : [];
     } catch (error) {
       console.warn(`[roster-refresh] player fetch failed for ${team.strTeam ?? team.idTeam}: ${error instanceof Error ? error.message : error}`);
-      return mergePreviousProviderData(normalizeTeam(team, []), previousTeam);
     }
+
+    let normalized = normalizeTeam(team, players);
+    if (!players.length && apiFootball && apiFootballTargets.has(index)) {
+      try {
+        const providerData = await fetchApiFootballTeamData(apiFootball, team, args.maxPlayersPerTeam);
+        if (providerData) {
+          normalized = {
+            ...normalized,
+            source: normalized.source === "TheSportsDB" ? "TheSportsDB + API-Football" : "API-Football + Curated Catalog",
+            badgeUrl: normalized.badgeUrl || providerData.badgeUrl,
+            rosterStatus: providerData.players.length ? "provider" : normalized.rosterStatus,
+            players: providerData.players.length ? providerData.players : normalized.players,
+            coach: providerData.coach,
+            providerTeamIds: {
+              apiFootball: providerData.providerTeamId
+            },
+            rosterUpdatedAt: providerData.players.length ? new Date().toISOString() : null
+          };
+        }
+      } catch (error) {
+        console.warn(`[roster-refresh] API-Football enrichment failed for ${team.strTeam ?? team.idTeam}: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+    return mergePreviousProviderData(normalized, previousTeam);
   });
+  teams = await enrichPlayerMetadata(teams);
 
   const apiFootballRosterCount = teams.filter((team) =>
     team.players.some((player) => player?.source?.provider === "API-Football")
@@ -981,6 +1068,14 @@ async function main() {
   const providerRosterCount = teams.filter(hasProviderRoster).length;
   const providerPlayerCount = teams.reduce(
     (total, team) => total + team.players.filter((player) => player.rosterStatus === "provider").length,
+    0
+  );
+  const localizedPlayerCount = teams.reduce(
+    (total, team) => total + team.players.filter((player) => Boolean(player.nameZh)).length,
+    0
+  );
+  const playerHeightCount = teams.reduce(
+    (total, team) => total + team.players.filter((player) => Number.isFinite(player.heightCm)).length,
     0
   );
   const snapshot = {
@@ -1000,7 +1095,9 @@ async function main() {
       nationalTeams: teams.filter((team) => team.kind === "national").length,
       players: teams.reduce((total, team) => total + team.players.length, 0),
       providerRosters: providerRosterCount,
-      providerPlayers: providerPlayerCount
+      providerPlayers: providerPlayerCount,
+      localizedPlayers: localizedPlayerCount,
+      playersWithHeight: playerHeightCount
     },
     teams
   };
@@ -1022,6 +1119,8 @@ async function main() {
             providerRosters: providerRosterCount,
             apiFootballRosters: apiFootballRosterCount,
             providerPlayers: providerPlayerCount,
+            localizedPlayers: localizedPlayerCount,
+            playersWithHeight: playerHeightCount,
             featuredTeams: ["Manchester City", "Real Madrid"].map((name) => {
               const team = snapshot.teams.find((item) => normalizedTeamName(item.name) === normalizedTeamName(name));
               return { name, present: Boolean(team), badge: Boolean(team?.badgeUrl) };
@@ -1043,6 +1142,8 @@ async function main() {
   console.log(`[roster-refresh] provider-rosters=${providerRosterCount}`);
   console.log(`[roster-refresh] api-football-rosters=${apiFootballRosterCount}`);
   console.log(`[roster-refresh] provider-players=${providerPlayerCount}`);
+  console.log(`[roster-refresh] localized-players=${localizedPlayerCount}`);
+  console.log(`[roster-refresh] players-with-height=${playerHeightCount}`);
   console.log(`[roster-refresh] roster-change-teams=${changes.totals.teamsWithRosterChanges}`);
   console.log(`[roster-refresh] done ${snapshot.generatedAt}`);
 }

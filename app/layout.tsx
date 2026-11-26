@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Football Prediction Agent",
-  description: "Security-first football pre-match intelligence agent skeleton"
+  title: "赛前情报 | Football Prediction Agent",
+  description: "面向中国用户的中英双语足球赛前情报与比赛预测工具 / Bilingual football pre-match intelligence and prediction tool"
 };
 
 export default function RootLayout({

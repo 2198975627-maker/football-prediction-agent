@@ -15,8 +15,11 @@
     "test": "node --no-warnings --test tests/*.test.mjs",
     "analytics:check": "python scripts/python/football_analytics_sources.py --check",
     "analytics:plot-demo": "python scripts/python/football_analytics_sources.py --plot-demo public/generated/football-analytics-demo.png",
+    "ai:check": "node --env-file-if-exists=.env.local scripts/check-ai-provider.mjs",
+    "ai:smoke": "node --env-file-if-exists=.env.local scripts/check-ai-provider.mjs --inference",
     "check": "pnpm run lint && pnpm run test && pnpm run typecheck && pnpm run build",
     "deploy:check": "pnpm run typecheck && pnpm run build",
+    "preview:check": "node --env-file-if-exists=.env.local scripts/check-free-preview.mjs",
     "production:check": "node scripts/check-production-env.mjs"
   },
   "dependencies": {

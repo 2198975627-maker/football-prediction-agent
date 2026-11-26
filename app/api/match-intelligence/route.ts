@@ -18,6 +18,7 @@ import {
   hasConfiguredMatchProvider,
   MatchProviderError
 } from "@/src/lib/providers/match-intelligence";
+import { fixtureProviderSchema } from "@/src/lib/schemas";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,8 @@ const inputSchema = z.object({
   teamA: z.string().trim().min(2).max(100),
   teamB: z.string().trim().min(2).max(100),
   matchDate: z.string().trim().min(10).max(40),
-  fixtureId: z.string().trim().regex(/^\d{4,12}$/).optional(),
+  fixtureId: z.string().trim().regex(/^\d{1,12}$/).optional(),
+  fixtureProvider: fixtureProviderSchema.optional(),
   forceRefresh: z.boolean().optional().default(false)
 });
 

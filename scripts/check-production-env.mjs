@@ -45,19 +45,32 @@ if (isLegacyJwt(supabasePublishableKey) || isLegacyJwt(supabaseSecretKey)) {
   issues.push("legacy Supabase JWT API keys are not accepted for production; use sb_publishable_ and sb_secret_ keys");
 }
 const requestedAiProvider = (process.env.AI_PROVIDER?.trim() || "auto").toLowerCase();
-if (!["auto", "openai", "hunyuan"].includes(requestedAiProvider)) issues.push("AI_PROVIDER must be auto, openai, or hunyuan");
-const activeAiProvider = requestedAiProvider === "hunyuan"
+if (!["auto", "openai", "hunyuan", "deepseek"].includes(requestedAiProvider)) issues.push("AI_PROVIDER must be auto, openai, hunyuan, or deepseek");
+const activeAiProvider = requestedAiProvider === "deepseek"
+  ? (process.env.DEEPSEEK_API_KEY?.trim() ? "deepseek" : null)
+  : requestedAiProvider === "hunyuan"
   ? (process.env.HUNYUAN_API_KEY?.trim() ? "hunyuan" : null)
   : requestedAiProvider === "openai"
     ? (process.env.OPENAI_API_KEY?.trim() ? "openai" : null)
-    : process.env.HUNYUAN_API_KEY?.trim()
-      ? "hunyuan"
-      : process.env.OPENAI_API_KEY?.trim()
-        ? "openai"
-        : null;
-if (!activeAiProvider) missing.push(requestedAiProvider === "hunyuan" ? "HUNYUAN_API_KEY" : requestedAiProvider === "openai" ? "OPENAI_API_KEY" : "HUNYUAN_API_KEY or OPENAI_API_KEY");
+    : process.env.DEEPSEEK_API_KEY?.trim()
+      ? "deepseek"
+      : process.env.HUNYUAN_API_KEY?.trim()
+        ? "hunyuan"
+        : process.env.OPENAI_API_KEY?.trim()
+          ? "openai"
+          : null;
+if (!activeAiProvider) {
+  const requestedKey = requestedAiProvider === "deepseek"
+    ? "DEEPSEEK_API_KEY"
+    : requestedAiProvider === "hunyuan"
+      ? "HUNYUAN_API_KEY"
+      : requestedAiProvider === "openai"
+        ? "OPENAI_API_KEY"
+        : "DEEPSEEK_API_KEY, HUNYUAN_API_KEY, or OPENAI_API_KEY";
+  missing.push(requestedKey);
+}
 if (activeAiProvider) {
-  const prefix = activeAiProvider === "hunyuan" ? "HUNYUAN" : "OPENAI";
+  const prefix = activeAiProvider === "hunyuan" ? "HUNYUAN" : activeAiProvider === "deepseek" ? "DEEPSEEK" : "OPENAI";
   const inputRate = Number(process.env[`${prefix}_INPUT_CENTS_PER_MILLION`]);
   const outputRate = Number(process.env[`${prefix}_OUTPUT_CENTS_PER_MILLION`]);
   if (!Number.isFinite(inputRate) || inputRate <= 0 || !Number.isFinite(outputRate) || outputRate <= 0) {

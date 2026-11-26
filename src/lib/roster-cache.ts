@@ -39,6 +39,34 @@ type RosterCacheRead = {
   warning?: string;
 };
 
+function compactSnapshot(snapshot: RosterSnapshot): RosterSnapshot {
+  const teams = (snapshot.teams ?? []).map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const team = value as Record<string, unknown>;
+    const players = Array.isArray(team.players)
+      ? team.players.filter((player) => {
+          if (!player || typeof player !== "object" || Array.isArray(player)) return false;
+          return (player as Record<string, unknown>).rosterStatus !== "placeholder";
+        })
+      : [];
+    return { ...team, players };
+  });
+  const playerCount = teams.reduce<number>((total, value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return total;
+    const players = (value as Record<string, unknown>).players;
+    return total + (Array.isArray(players) ? players.length : 0);
+  }, 0);
+
+  return {
+    ...snapshot,
+    teams,
+    totals: {
+      ...snapshot.totals,
+      players: playerCount
+    }
+  };
+}
+
 function readText(name: string, fallback = "") {
   return process.env[name]?.trim() || fallback;
 }
@@ -109,7 +137,8 @@ export async function readRosterCache(outputDir?: string): Promise<RosterCacheRe
   const isProduction = process.env.NODE_ENV === "production" || readText("APP_ENV") === "production";
   if (config) {
     try {
-      const snapshot = (await readSupabaseItem(config, "latest")) as RosterSnapshot | null;
+      const rawSnapshot = (await readSupabaseItem(config, "latest")) as RosterSnapshot | null;
+      const snapshot = rawSnapshot ? compactSnapshot(rawSnapshot) : null;
       if (snapshot) {
         const changes = await readSupabaseItem(config, "latest-changes");
         return {
@@ -143,7 +172,8 @@ export async function readRosterCache(outputDir?: string): Promise<RosterCacheRe
 
 async function readRosterCacheFromLocal(outputDir?: string): Promise<RosterCacheRead | null> {
   const cacheDir = localCacheDir(outputDir);
-  const snapshot = await readLocalJson<RosterSnapshot>(path.join(cacheDir, "latest.json"));
+  const rawSnapshot = await readLocalJson<RosterSnapshot>(path.join(cacheDir, "latest.json"));
+  const snapshot = rawSnapshot ? compactSnapshot(rawSnapshot) : null;
 
   if (!snapshot) {
     return null;

@@ -24,6 +24,7 @@ SUPABASE_ROSTER_CACHE_TABLE=football_roster_cache
 CRON_SECRET=
 ROSTER_REFRESH_MAX_TEAMS=72
 ROSTER_REFRESH_MAX_PLAYERS_PER_TEAM=40
+ROSTER_THESPORTSDB_PLAYER_LIMIT=12
 ROSTER_API_FOOTBALL_TEAM_LIMIT=16
 API_FOOTBALL_KEY=
 ```
@@ -47,6 +48,7 @@ roster snapshots to the deployed filesystem or the user's computer.
 - Never log API keys or authorization headers.
 - Never configure a local recurring refresh.
 - Use `THESPORTSDB_API_KEY` when configured; otherwise the script uses the public demo key.
+- `ROSTER_THESPORTSDB_PLAYER_LIMIT` bounds daily rotating roster lookups. Records with a Wikidata ID are enriched in one batch per team with a simplified Chinese label and a missing height when available; this does not call an AI model.
 - When API-Football is configured, rotate a bounded set of teams through official
   current-squad and coach endpoints and preserve previously verified rosters.
 - Treat public data as a cache, not as authoritative paid event data.

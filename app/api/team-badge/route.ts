@@ -8,6 +8,8 @@ const ALLOWED_BADGE_HOSTS = new Set([
   "media.api-sports.io",
   "cdn.sportmonks.com",
   "crests.football-data.org",
+  "upload.wikimedia.org",
+  "i.imgur.com",
   ...((process.env.BADGE_PROXY_HOSTS ?? "").split(",").map((host) => host.trim().toLowerCase()).filter(Boolean))
 ]);
 const MAX_BADGE_URL_LENGTH = 600;

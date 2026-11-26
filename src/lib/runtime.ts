@@ -1,4 +1,5 @@
 import { getAiProviderStatus } from "./ai-provider";
+import { getBillingRuntimeConfig } from "./billing-config";
 
 export type ProviderMode = "mock" | "live";
 
@@ -12,14 +13,6 @@ function readBoolean(name: string, fallback = false) {
   const value = readText(name).toLowerCase();
   if (!value) return fallback;
   return ["1", "true", "yes", "on"].includes(value);
-}
-
-function readNumber(name: string, fallback: number, min: number, max: number) {
-  const raw = readText(name);
-  if (!raw) return fallback;
-  const value = Number(raw);
-  if (!Number.isFinite(value)) return fallback;
-  return Math.min(max, Math.max(min, value));
 }
 
 function readProviderMode(): ProviderMode {
@@ -38,8 +31,7 @@ export function getRuntimeConfig() {
   const appEnv = readText("APP_ENV", process.env.NODE_ENV || "development");
   const providerMode = readProviderMode();
   const liveCostsEnabled = readBoolean("LIVE_COSTS_ENABLED", false);
-  const billingMarkupMultiplier = readNumber("BILLING_MARKUP_MULTIPLIER", 2, 1, 20);
-  const minimumChargeCents = Math.round(readNumber("MIN_CHARGE_CENTS", 100, 0, 100_000));
+  const { billingMarkupMultiplier, minimumChargeCents } = getBillingRuntimeConfig();
   const sportsDbApiKeyMode = getSportsDbApiKeyMode();
   const ai = getAiProviderStatus();
 

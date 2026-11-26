@@ -1,6 +1,7 @@
 import { canonicalMetricKey } from "../football-metrics";
 import { readLimitedResponseBytes } from "../http-security";
 import type { LiveMatchIntelligence } from "./sportmonks";
+import type { ScheduledFixture } from "../fixture-types";
 
 type JsonObject = Record<string, unknown>;
 type ResolveInput = { teamA: string; teamB: string; matchDate: string; fixtureId?: string };
@@ -89,6 +90,36 @@ async function request(path: string, search: Record<string, string> = {}) {
     if (error instanceof AnySportError) throw error;
     throw new AnySportError("AnySport 返回了无效或过大的响应。", 502, "ANYSPORT_INVALID_RESPONSE");
   }
+}
+
+function anySportStartsAt(row: JsonObject) {
+  const combined = text(row.datetime) || text(row.start_time);
+  if (combined && Number.isFinite(Date.parse(combined))) return new Date(combined).toISOString();
+  const date = text(row.date);
+  const time = text(row.time, "00:00");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "";
+  const candidate = `${date}T${/^\d{2}:\d{2}/.test(time) ? time.slice(0, 5) : "00:00"}:00Z`;
+  return Number.isFinite(Date.parse(candidate)) ? new Date(candidate).toISOString() : "";
+}
+
+export function normalizeAnySportFixtures(payload: JsonObject): ScheduledFixture[] {
+  return array(payload.data).map(object).filter((row): row is JsonObject => Boolean(row)).map((row) => {
+    const id = number(row.match_id);
+    const startsAt = anySportStartsAt(row);
+    if (!id || !startsAt || !text(row.home) || !text(row.away)) return null;
+    return {
+      id: String(id), provider: "anysport" as const, startsAt, status: text(row.status),
+      competition: text(row.league, "Unknown Competition"), country: text(row.country),
+      round: text(row.round), venue: text(row.stadium),
+      home: { id: number(row.home_id) ?? 0, name: text(row.home, "Unknown Team"), shortCode: text(row.home_code), badgeUrl: text(row.home_badge) },
+      away: { id: number(row.away_id) ?? 0, name: text(row.away, "Unknown Team"), shortCode: text(row.away_code), badgeUrl: text(row.away_badge) }
+    };
+  }).filter((fixture): fixture is NonNullable<typeof fixture> => fixture !== null);
+}
+
+export async function getAnySportFixturesByDate(date: string) {
+  const normalizedDate = dateOnly(date);
+  return normalizeAnySportFixtures(await request("matches", { from: normalizedDate, to: normalizedDate, lang: "zh", limit: "200" }));
 }
 
 function fixtureMatches(fixture: JsonObject, teamA: string, teamB: string) {

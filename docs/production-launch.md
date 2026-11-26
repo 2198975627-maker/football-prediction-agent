@@ -19,7 +19,7 @@ For mainland China users, read `docs/mainland-production.md` first. Do not enabl
    - `skills/football-roster-refresh/references/supabase-cache.sql`
 4. Create a Stripe account, complete business verification, and create a webhook for `https://YOUR_DOMAIN/api/payments/webhook` listening to `checkout.session.completed`.
 5. Choose the platform AI provider:
-   - Mainland: create a Tencent TokenHub key and configure `AI_PROVIDER=hunyuan`, `HUNYUAN_API_KEY`, `HUNYUAN_MODEL=hy3`, and current TokenHub token prices.
+   - Mainland default: create a Tencent TokenHub key scoped to DeepSeek V4 Flash and configure `AI_PROVIDER=deepseek`, `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL=deepseek-v4-flash`, and current TokenHub token prices.
    - Overseas: configure `AI_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL=gpt-5.6-terra`, and current OpenAI token prices. The OpenAI path uses the Responses API with Structured Outputs, `store: false`, and a privacy-preserving safety identifier.
 6. Create Upstash Redis and configure both REST variables for distributed rate limiting.
 

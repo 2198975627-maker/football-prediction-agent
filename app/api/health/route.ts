@@ -9,6 +9,7 @@ import { getApiFootballAuthMode } from "@/src/lib/providers/api-football";
 import { getAiProviderStatus } from "@/src/lib/ai-provider";
 import { getSupabaseSettings } from "@/src/lib/supabase-config";
 import { getSportsDataPricing } from "@/src/lib/sports-data-costs";
+import { configuredFixtureProviders } from "@/src/lib/fixture-schedule";
 
 export async function GET(request: Request) {
   const limited = await checkRateLimit(request, { keyPrefix: "health", limit: 120, windowMs: 60_000 });
@@ -21,6 +22,7 @@ export async function GET(request: Request) {
 
   const config = getRuntimeConfig();
   const matchProviders = configuredMatchProviders();
+  const fixtureProviders = configuredFixtureProviders();
   const sportsPricing = getSportsDataPricing(matchProviders);
   const ai = getAiProviderStatus();
   const aiConfigured = ai.configured;
@@ -38,6 +40,11 @@ export async function GET(request: Request) {
     billingMarkupMultiplier: config.billingMarkupMultiplier,
     minimumChargeCents: config.minimumChargeCents,
     sportsData: {
+      fixtureDiscovery: {
+        configuredProviders: fixtureProviders,
+        freeProviders: fixtureProviders.filter((provider) => provider === "thesportsdb" || provider === "openligadb"),
+        freePreviewReady: fixtureProviders.some((provider) => provider === "thesportsdb" || provider === "openligadb")
+      },
       theSportsDb: {
         apiKeyMode: config.sportsDbApiKeyMode
       },

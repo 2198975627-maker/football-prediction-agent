@@ -1,4 +1,5 @@
 import type { PredictionInput } from "./schemas";
+import { canonicalMockTeamKey, resolveMockTeam } from "./mock-scenarios.ts";
 
 export type ResolvedTeam = {
   id: string;
@@ -45,30 +46,29 @@ function normalizeTeamName(value: string) {
 export function resolveTeams(input: PredictionInput) {
   const teamA = normalizeTeamName(input.teamA);
   const teamB = normalizeTeamName(input.teamB);
-  const nationalHint = /国家队|中国|法国|德国|英格兰|西班牙|阿根廷|巴西|葡萄牙|意大利/.test(
-    `${teamA} ${teamB} ${input.competition}`
-  );
+  const competitionIsNational = /国家队|national|world cup|世界杯|欧洲杯|亚洲杯|美洲杯/i.test(input.competition);
+  const resolveOne = (name: string) => {
+    const known = resolveMockTeam(name);
+    const explicitNationalName = /国家队|national team$/i.test(name);
+    const type = known?.kind ?? (explicitNationalName || competitionIsNational ? "national" : "club");
+    return {
+      id: `mock-${canonicalMockTeamKey(name)}`,
+      name,
+      type,
+      confidence: known ? 0.99 : competitionIsNational || explicitNationalName ? 0.82 : 0.7
+    } satisfies ResolvedTeam;
+  };
 
   return {
-    teamA: {
-      id: `mock-${stableNumber(teamA)}`,
-      name: teamA,
-      type: nationalHint ? "national" : "club",
-      confidence: 0.88
-    } satisfies ResolvedTeam,
-    teamB: {
-      id: `mock-${stableNumber(teamB)}`,
-      name: teamB,
-      type: nationalHint ? "national" : "club",
-      confidence: 0.88
-    } satisfies ResolvedTeam
+    teamA: resolveOne(teamA),
+    teamB: resolveOne(teamB)
   };
 }
 
 export function collectFootballData(input: PredictionInput): FootballDataPack {
   const { teamA, teamB } = resolveTeams(input);
-  const aSeed = stableNumber(teamA.name);
-  const bSeed = stableNumber(teamB.name);
+  const aSeed = stableNumber(teamA.id);
+  const bSeed = stableNumber(teamB.id);
   const aGoals = 5 + (aSeed % 9);
   const bGoals = 5 + (bSeed % 9);
   const aConceded = 3 + (bSeed % 7);

@@ -2,6 +2,7 @@ import { readLimitedResponseBytes } from "../http-security";
 import { addCanonicalMetric, canonicalMetricKey, type CanonicalMetrics } from "../football-metrics";
 import type { LiveMatchIntelligence } from "./sportmonks";
 import type { PlayerEventData, PlayerEventProfile } from "../player-event-data";
+import type { ScheduledFixture } from "../fixture-types";
 
 type JsonObject = Record<string, unknown>;
 type ResolveInput = { teamA: string; teamB: string; matchDate: string; fixtureId?: string };
@@ -147,6 +148,42 @@ async function request(path: string, search: Record<string, string> = {}) {
 
 function responses(payload: JsonObject) {
   return array(payload.response).map(object).filter((item): item is JsonObject => Boolean(item));
+}
+
+function localizedCompetition(name: string, country: string) {
+  if (country.toLowerCase() !== "china") return name;
+  if (/^super league$/i.test(name)) return "中超联赛";
+  if (/^fa cup$/i.test(name)) return "中国足协杯";
+  if (/^league one$/i.test(name)) return "中甲联赛";
+  if (/^league two$/i.test(name)) return "中乙联赛";
+  return name;
+}
+
+export function normalizeApiFootballFixtures(payload: JsonObject): ScheduledFixture[] {
+  return responses(payload).map((entry) => {
+    const fixture = object(entry.fixture);
+    const league = object(entry.league);
+    const teams = object(entry.teams);
+    const home = object(teams?.home);
+    const away = object(teams?.away);
+    const status = object(fixture?.status);
+    const venue = object(fixture?.venue);
+    const id = number(fixture?.id);
+    const startsAt = text(fixture?.date);
+    if (!id || !startsAt || !home || !away) return null;
+    return {
+      id: String(id), provider: "api-football" as const, startsAt,
+      status: text(status?.short) || text(status?.long),
+      competition: localizedCompetition(text(league?.name, "Unknown Competition"), text(league?.country)), country: text(league?.country),
+      round: text(league?.round), venue: text(venue?.name),
+      home: { id: number(home.id) ?? 0, name: text(home.name, "Unknown Team"), shortCode: text(home.code), badgeUrl: text(home.logo) },
+      away: { id: number(away.id) ?? 0, name: text(away.name, "Unknown Team"), shortCode: text(away.code), badgeUrl: text(away.logo) }
+    };
+  }).filter((fixture): fixture is NonNullable<typeof fixture> => fixture !== null);
+}
+
+export async function getApiFootballFixturesByDate(date: string) {
+  return normalizeApiFootballFixtures(await request("fixtures", { date: dateOnly(date), timezone: "Asia/Shanghai" }));
 }
 
 function nameMatches(name: string, query: string) {

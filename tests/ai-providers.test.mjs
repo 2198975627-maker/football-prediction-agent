@@ -8,14 +8,16 @@ async function source(path) {
   return readFile(new URL(path, root), "utf8");
 }
 
-test("TokenHub credentials remain server-only and use the mainland endpoint", async () => {
+test("TokenHub and DeepSeek credentials remain server-only and use configured endpoints", async () => {
   const provider = await source("src/lib/ai-provider.ts");
   const gates = await source("config/security-gates.json");
   assert.match(provider, /https:\/\/tokenhub\.tencentmaas\.com\/v1/);
+  assert.match(provider, /https:\/\/api\.deepseek\.com\/v1/);
+  assert.match(provider, /DEEPSEEK_API_KEY/);
+  assert.match(provider, /model: env\("DEEPSEEK_MODEL", "deepseek-v4-pro"\)/);
+  assert.match(gates, /"DEEPSEEK_API_KEY"/);
+  assert.match(gates, /"NEXT_PUBLIC_DEEPSEEK"/);
   assert.match(provider, /HUNYUAN_API_KEY/);
-  assert.match(provider, /model: env\("HUNYUAN_MODEL", "hy3"\)/);
-  assert.match(gates, /"HUNYUAN_API_KEY"/);
-  assert.match(gates, /"NEXT_PUBLIC_HUNYUAN"/);
 });
 
 test("paid AI traffic requires provider-specific positive prices", async () => {
@@ -48,6 +50,7 @@ test("real AI usage is recorded without prompts, keys, or full responses", async
   assert.match(costs, /model_cost_cents/);
   assert.doesNotMatch(costs, /prompt\s*:/i);
   assert.doesNotMatch(sql, /api_key|prompt_text|response_text/i);
+  assert.match(sql, /'deepseek'/);
   assert.ok(route.indexOf("settleOrder(") < route.indexOf("updateAiUsageCharge("));
 });
 

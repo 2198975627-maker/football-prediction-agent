@@ -47,7 +47,8 @@ test("roster UI exposes factual bio fields without synthesizing height or penalt
   assert.match(page, /shirtNumber/);
   assert.match(page, /heightCm/);
   assert.match(page, /暂无可核验的点球样本/);
-  assert.match(page, /主教练 \{team\.coach\.name\}/);
+  assert.match(page, /zh="主教练" en="Head Coach"/);
+  assert.match(page, /<FootballName name=\{team\.coach\.name\} type="player"/);
   assert.doesNotMatch(page, /function playerHeight/);
   assert.doesNotMatch(page, /function textSeed/);
   assert.doesNotMatch(page, /penaltySave:\s*clampMetric\(13/);

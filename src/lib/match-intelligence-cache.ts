@@ -6,6 +6,7 @@ type CacheInput = {
   teamB: string;
   matchDate: string;
   fixtureId?: string;
+  fixtureProvider?: string;
 };
 
 type CacheEntry = {
@@ -67,9 +68,9 @@ function matchDate(value: string) {
 }
 
 export function matchIntelligenceCacheKey(input: CacheInput) {
-  if (input.fixtureId) return `match:v2:fixture:${input.fixtureId}`;
+  if (input.fixtureId) return `match:v3:fixture:${input.fixtureProvider ?? "unknown"}:${input.fixtureId}`;
   const teams = [normalize(input.teamA), normalize(input.teamB)].sort();
-  return `match:v2:${teams[0]}:${teams[1]}:${matchDate(input.matchDate)}`;
+  return `match:v3:${teams[0]}:${teams[1]}:${matchDate(input.matchDate)}`;
 }
 
 export function fixtureCacheKey(fixtureId: number, provider = "sportmonks") {

@@ -302,6 +302,13 @@ export async function POST(request: Request) {
           ]
         },
         workflow,
+        prediction: generated.result,
+        provenance: {
+          fixture: "live",
+          analysis: "live-ai",
+          rosters: matchData.coverage.confirmedLineup ? "live" : "mixed",
+          billing: input.billingMode === "platform" ? "charged" : "byok"
+        },
         report,
         generatedAt: new Date().toISOString(),
         model: generated.model,

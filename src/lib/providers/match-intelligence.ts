@@ -4,8 +4,8 @@ import { AnySportError, getAnySportMatchIntelligence, isAnySportConfigured } fro
 import { getSportmonksMatchIntelligence, isSportmonksConfigured, SportmonksError, type LiveMatchIntelligence } from "./sportmonks";
 import { canonicalMatchIdentity, canonicalTeamIdentity, normalizeFootballIdentity } from "../match-identities";
 
-type ResolveInput = { teamA: string; teamB: string; matchDate: string; fixtureId?: string };
 export type MatchProviderId = LiveMatchIntelligence["provider"];
+type ResolveInput = { teamA: string; teamB: string; matchDate: string; fixtureId?: string; fixtureProvider?: string };
 
 type ProviderAttempt = {
   id: MatchProviderId;
@@ -185,7 +185,7 @@ export async function getLiveMatchIntelligenceFromProvider(providerId: MatchProv
   if (!provider?.configured()) {
     throw new MatchProviderError(`${providerId} 尚未配置或不可用。`, 503, "MATCH_PROVIDER_NOT_CONFIGURED");
   }
-  return provider.load(input);
+  return provider.load({ ...input, fixtureId: input.fixtureProvider && input.fixtureProvider !== providerId ? undefined : input.fixtureId });
 }
 
 async function loadLiveMatchIntelligence(input: ResolveInput) {
@@ -198,7 +198,10 @@ async function loadLiveMatchIntelligence(input: ResolveInput) {
     );
   }
 
-  const settled = await Promise.allSettled(available.map((provider) => provider.load(input)));
+  const settled = await Promise.allSettled(available.map((provider) => provider.load({
+    ...input,
+    fixtureId: input.fixtureProvider === provider.id ? input.fixtureId : undefined
+  })));
   const successful = settled
     .filter((result): result is PromiseFulfilledResult<LiveMatchIntelligence> => result.status === "fulfilled")
     .map((result) => result.value);
@@ -223,7 +226,7 @@ async function loadLiveMatchIntelligence(input: ResolveInput) {
 }
 
 export async function getLiveMatchIntelligence(input: ResolveInput) {
-  const key = [input.fixtureId ?? "", normalized(input.teamA), normalized(input.teamB), input.matchDate.slice(0, 16)].join(":");
+  const key = [input.fixtureProvider ?? "", input.fixtureId ?? "", normalized(input.teamA), normalized(input.teamB), input.matchDate.slice(0, 16)].join(":");
   const existing = inFlightRequests.get(key);
   if (existing) return existing;
   const pending = loadLiveMatchIntelligence(input).finally(() => inFlightRequests.delete(key));

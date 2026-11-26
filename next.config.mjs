@@ -25,7 +25,7 @@ const nextConfig = {
           "font-src 'self' data:",
           "style-src 'self' 'unsafe-inline'",
           scriptPolicy,
-          "upgrade-insecure-requests"
+          ...(process.env.NODE_ENV === "production" ? ["upgrade-insecure-requests"] : [])
         ].join("; ")
       },
       {

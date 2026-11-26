@@ -27,10 +27,13 @@ test("refunds are recorded as pending before Stripe and finalized separately", a
   assert.match(sql, /create or replace function public\.complete_football_payment_refund/);
 });
 
-test("unverified frontend metrics do not create preview probabilities or matchup cards", async () => {
+test("unverified live metrics stay gated while explicitly labelled mock intelligence can render", async () => {
   const page = await source("app/page.tsx");
   assert.doesNotMatch(page, /function buildPreviewProbability/);
-  assert.match(page, /hasVerifiedTeamMetrics && hasVerifiedPlayerMetrics \? buildMatchupInsights/);
+  assert.match(page, /useMockProfiles = usingMockIntelligence && !hasVerifiedTeamMetrics/);
+  assert.match(page, /hasAnalysisTeamMetrics && hasAnalysisPlayerMetrics/);
+  assert.match(page, /isPlayerMetricsAvailable\(player, useMockProfiles\)/);
+  assert.match(page, /不代表真实球队事实/);
   assert.match(page, /暂无核验统计/);
 });
 
@@ -47,12 +50,14 @@ test("production roster refresh remains cloud-only", async () => {
   const refresh = await source("skills/football-roster-refresh/scripts/refresh-rosters.mjs");
   const cache = await source("src/lib/roster-cache.ts");
   const packageJson = await source("package.json");
+  const cron = await source("app/api/cron/refresh-rosters/route.ts");
 
   assert.match(refresh, /storage cloud-only/);
   assert.match(refresh, /writeCloudCache\(snapshot, changes, true\)/);
   assert.doesNotMatch(refresh, /\bwriteFile\b|\bmkdir\b|latest\.json/);
   assert.match(cache, /if \(isProduction\) \{\s+throw error;/);
   assert.doesNotMatch(packageJson, /roster:refresh/);
+  assert.match(cron, /ROSTER_CRON_DISABLED/);
 });
 
 test("Supabase roster cache reads have a bounded timeout", async () => {

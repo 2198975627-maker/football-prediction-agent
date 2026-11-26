@@ -1,5 +1,6 @@
 import { readLimitedResponseBytes } from "../http-security";
 import type { LiveMatchIntelligence } from "./sportmonks";
+import type { ScheduledFixture } from "../fixture-types";
 
 type JsonObject = Record<string, unknown>;
 type ResolveInput = { teamA: string; teamB: string; matchDate: string; fixtureId?: string };
@@ -83,6 +84,62 @@ async function request(path: string, search: Record<string, string> = {}) {
   } catch {
     throw new FootballDataError("football-data.org 返回了无效或过大的响应。", 502, "FOOTBALL_DATA_INVALID_RESPONSE");
   }
+}
+
+export function normalizeFootballDataFixtures(payload: JsonObject): ScheduledFixture[] {
+  return array(payload.matches).map(object).filter((match): match is JsonObject => Boolean(match)).map((match) => {
+    const home = object(match.homeTeam);
+    const away = object(match.awayTeam);
+    const competition = object(match.competition);
+    const area = object(match.area);
+    const id = number(match.id);
+    const startsAt = text(match.utcDate);
+    if (!id || !startsAt || !home || !away) return null;
+    const matchday = number(match.matchday);
+    return {
+      id: String(id), provider: "football-data-org" as const, startsAt, status: text(match.status),
+      competition: text(competition?.name, "Unknown Competition"), country: text(area?.name),
+      round: text(match.stage) || (matchday ? `Matchday ${matchday}` : ""), venue: text(match.venue),
+      home: { id: number(home.id) ?? 0, name: text(home.name, "Unknown Team"), shortCode: text(home.tla), badgeUrl: text(home.crest) },
+      away: { id: number(away.id) ?? 0, name: text(away.name, "Unknown Team"), shortCode: text(away.tla), badgeUrl: text(away.crest) }
+    };
+  }).filter((fixture): fixture is NonNullable<typeof fixture> => fixture !== null);
+}
+
+function beijingFixtureDate(startsAt: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(new Date(startsAt));
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+export async function getFootballDataFixturesByRange(dateFrom: string, dateTo: string) {
+  const normalizedFrom = dateOnly(dateFrom);
+  const normalizedTo = dateOnly(dateTo);
+  const fixtures: ScheduledFixture[] = [];
+  let cursor = normalizedFrom;
+
+  // football-data.org limits broad match searches on some plans, so keep each
+  // upstream request to a small window while still presenting one combined list.
+  while (cursor <= normalizedTo) {
+    const chunkTo = shiftDate(cursor, 9) < normalizedTo ? shiftDate(cursor, 9) : normalizedTo;
+    const payload = await request("matches", { dateFrom: shiftDate(cursor, -1), dateTo: chunkTo });
+    fixtures.push(...normalizeFootballDataFixtures(payload).filter((fixture) => {
+      const fixtureDate = beijingFixtureDate(fixture.startsAt);
+      return fixtureDate >= cursor && fixtureDate <= chunkTo;
+    }));
+    cursor = shiftDate(chunkTo, 1);
+  }
+
+  return fixtures;
+}
+
+export async function getFootballDataFixturesByDate(date: string) {
+  const normalizedDate = dateOnly(date);
+  return (await getFootballDataFixturesByRange(normalizedDate, normalizedDate)).filter((fixture) => {
+    return beijingFixtureDate(fixture.startsAt) === normalizedDate;
+  });
 }
 
 function teamMatches(team: JsonObject | null, query: string) {

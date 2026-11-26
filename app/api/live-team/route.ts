@@ -3,6 +3,11 @@ import { checkRateLimit, rateLimitHeaders } from "@/src/lib/rate-limit";
 import { readLimitedJson, RequestBodyTooLargeError } from "@/src/lib/http-security";
 import { readRosterCache } from "@/src/lib/roster-cache";
 import { getSportsDbApiKey, getSportsDbApiKeyMode } from "@/src/lib/runtime";
+import {
+  fetchWikidataPlayerMetadata,
+  normalizeHeightCm,
+  type WikidataPlayerMetadata
+} from "@/src/lib/player-metadata.mjs";
 
 type LiveTeamMode = "search" | "league" | "country" | "popular";
 
@@ -23,8 +28,10 @@ type SportsDbTeam = {
 
 type SportsDbPlayer = {
   idPlayer?: string;
+  idWikidata?: string;
   strPlayer?: string;
   strPosition?: string;
+  strSide?: string;
   strThumb?: string;
   strCutout?: string;
   strNumber?: string;
@@ -36,7 +43,7 @@ type SportsDbPlayer = {
 const BASE_URL = "https://www.thesportsdb.com/api/v1/json";
 const MAX_TEAMS = 24;
 const MAX_POPULAR_TEAMS = 96;
-const MAX_PLAYERS = 8;
+const MAX_PLAYERS = 40;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 const popularLeagues = [
@@ -235,15 +242,6 @@ function optionalNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function parseHeightCm(value: unknown) {
-  const text = toText(value, 30).toLowerCase();
-  if (!text) return null;
-  const amount = Number(text.replace(",", ".").match(/\d+(?:\.\d+)?/)?.[0]);
-  if (!Number.isFinite(amount) || text.includes("ft") || text.includes("'")) return null;
-  const centimeters = text.includes("m") && !text.includes("cm") && amount < 3 ? amount * 100 : amount;
-  return centimeters >= 140 && centimeters <= 230 ? Math.round(centimeters) : null;
-}
-
 function ageFromBirthDate(value: unknown) {
   const birthDate = new Date(toText(value, 30));
   if (!Number.isFinite(birthDate.getTime())) return null;
@@ -294,12 +292,29 @@ function recent(seed: number) {
   return Array.from({ length: 5 }, (_, index) => values[(seed + index) % values.length]);
 }
 
-function normalizePlayer(player: SportsDbPlayer, _teamSeed: number, index: number) {
+function preferredFoot(value: unknown) {
+  const foot = toText(value, 20).toLowerCase();
+  if (foot.includes("left")) return "left";
+  if (foot.includes("right")) return "right";
+  if (foot.includes("both")) return "both";
+  return "unknown";
+}
+
+function normalizePlayer(
+  player: SportsDbPlayer,
+  _teamSeed: number,
+  index: number,
+  metadata?: WikidataPlayerMetadata
+) {
   const name = toText(player.strPlayer, 60) || `Player ${index + 1}`;
   const role = toText(player.strPosition, 40) || "Player";
   const shirtNumber = optionalNumber(player.strNumber);
+  const providerHeight = normalizeHeightCm(player.strHeight);
+  const heightCm = providerHeight ?? metadata?.heightCm ?? null;
+  const wikidataId = toText(player.idWikidata, 24);
   return {
     name,
+    nameZh: metadata?.nameZh ?? "",
     role,
     status: "ready" as const,
     form: 0,
@@ -310,34 +325,51 @@ function normalizePlayer(player: SportsDbPlayer, _teamSeed: number, index: numbe
     avatarUrl: player.strCutout || player.strThumb || "",
     age: ageFromBirthDate(player.dateBorn || player.strBirthDate),
     shirtNumber: shirtNumber !== null && shirtNumber >= 0 && shirtNumber <= 99 ? Math.round(shirtNumber) : null,
-    heightCm: parseHeightCm(player.strHeight),
+    heightCm,
+    preferredFoot: preferredFoot(player.strSide),
     metricsStatus: "placeholder" as const,
     rosterStatus: player.idPlayer ? ("provider" as const) : ("placeholder" as const),
-    note: "TheSportsDB 球员名单；状态、进球、助攻等指标暂为可视化占位，需接入官方统计源后替换。"
+    note: `TheSportsDB 球员名单${metadata?.nameZh || (metadata?.heightCm && !providerHeight) ? "，中文名或身高由 Wikidata 补全" : ""}；状态、进球、助攻等指标仍待正式统计源核验。`,
+    source: {
+      provider: "TheSportsDB",
+      providerPlayerId: toText(player.idPlayer, 40),
+      wikidataId,
+      metadataUrl: metadata?.sourceUrl ?? (wikidataId ? `https://www.wikidata.org/wiki/${wikidataId}` : ""),
+      heightProvider: providerHeight ? "TheSportsDB" : metadata?.heightCm ? "Wikidata" : ""
+    }
   };
 }
 
 async function fetchPlayers(apiKey: string, teamId: string, teamSeed: number) {
   const url = makeUrl(apiKey, "lookup_all_players.php", { id: teamId });
   const data = await fetchJson<{ player?: SportsDbPlayer[] | null }>(url);
-  const blockedRoles = ["coach", "manager", "president", "chairman", "assistant"];
-  const players = (data.player ?? [])
+  const blockedRoles = [
+    "coach", "manager", "president", "chairman", "assistant", "ceo", "chief",
+    "director", "operations", "executive", "owner", "board", "staff", "scout",
+    "physio", "doctor", "analyst", "administrator", "coordinator", "secretary"
+  ];
+  const rawPlayers = (data.player ?? [])
     .filter((player) => {
       const role = toText(player.strPosition, 50).toLowerCase();
       return !blockedRoles.some((blocked) => role.includes(blocked));
     })
-    .slice(0, MAX_PLAYERS)
-    .map((player, index) => normalizePlayer(player, teamSeed, index));
+    .slice(0, MAX_PLAYERS);
+
+  let metadata = new Map<string, WikidataPlayerMetadata>();
+  try {
+    metadata = await fetchWikidataPlayerMetadata(rawPlayers.map((player) => player.idWikidata), { timeoutMs: 5_000 });
+  } catch {
+    // The primary roster remains usable if the optional open metadata source is unavailable.
+  }
+
+  const players = rawPlayers.map((player, index) =>
+    normalizePlayer(player, teamSeed, index, metadata.get(toText(player.idWikidata, 24)))
+  );
 
   return players;
 }
 
-function placeholderPlayers(teamName: string, seed: number) {
-  const roles = ["Forward", "Midfielder", "Defensive Midfielder", "Defender", "Goalkeeper"];
-  return roles.map((role, index) => normalizePlayer({ strPlayer: `${teamName} ${role}`, strPosition: role }, seed, index));
-}
-
-function normalizeTeam(team: SportsDbTeam, players: ReturnType<typeof placeholderPlayers> = [], source = "TheSportsDB") {
+function normalizeTeam(team: SportsDbTeam, players: ReturnType<typeof normalizePlayer>[] = [], source = "TheSportsDB") {
   const name = toText(team.strTeam, 80) || "Unknown Team";
   const league = toText(team.strLeague, 80) || "Unknown League";
   const country = toText(team.strCountry, 60) || "Unknown";
@@ -371,7 +403,7 @@ function normalizeTeam(team: SportsDbTeam, players: ReturnType<typeof placeholde
     xgFor: Number((1.1 + (seed % 118) / 100).toFixed(2)),
     xgAgainst: Number((0.72 + ((seed >> 3) % 96) / 100).toFixed(2)),
     recent: recent(seed),
-    players: players.length ? players : placeholderPlayers(name, seed)
+    players
   };
 }
 

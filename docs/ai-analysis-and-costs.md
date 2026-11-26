@@ -35,20 +35,40 @@ GPT-5.6 Terra is the balanced production role for this workload. Enter the
 current rates from the provider contract in CNY cents per one million tokens.
 Do not copy old example prices into production.
 
-## Mainland configuration
+## DeepSeek configuration
 
 ```env
-AI_PROVIDER=hunyuan
-HUNYUAN_API_KEY=your_server_key
-HUNYUAN_BASE_URL=https://tokenhub.tencentmaas.com/v1
-HUNYUAN_MODEL=hy3
-HUNYUAN_INPUT_CENTS_PER_MILLION=
-HUNYUAN_CACHED_INPUT_CENTS_PER_MILLION=
-HUNYUAN_OUTPUT_CENTS_PER_MILLION=
+AI_PROVIDER=deepseek
+DEEPSEEK_API_KEY=your_server_key
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_MODEL=deepseek-v4-pro
+DEEPSEEK_INPUT_CENTS_PER_MILLION=880
+DEEPSEEK_CACHED_INPUT_CENTS_PER_MILLION=29
+DEEPSEEK_OUTPUT_CENTS_PER_MILLION=2641
 ```
 
-Use current TokenHub contract prices. A positive input and output rate is
-required before platform-paid predictions are allowed.
+These are the DeepSeek V4 Pro (`deepseek-v4-pro`, 1M context) peak-hour public rates checked on 2026-11-16 ($1.32 input / $0.044 cached input / $3.96 output per 1M tokens, converted at 1 USD ≈ 6.67 CNY; off-peak is 440 / 15 / 1321),
+expressed in CNY cents per one million tokens. Recheck the official model-price
+page before production activation or use the rates in your own contract. A
+positive input and output rate is required before platform-paid predictions are
+allowed.
+
+The project also retains optional Hunyuan and OpenAI adapters.
+
+Validate the server-only key and model without consuming inference tokens:
+
+```bash
+pnpm ai:check
+```
+
+After that succeeds, run one deliberately small structured-output inference:
+
+```bash
+pnpm ai:smoke
+```
+
+The smoke command consumes a small number of tokens. Neither command prints the
+API key, prompt payloads, or model response.
 
 ## Safe activation sequence
 
