@@ -57,7 +57,7 @@ function roundCost(value: number) {
 }
 
 export function getAiPricingSnapshot(provider: AiProvider): AiPricingSnapshot {
-  const prefix = provider === "hunyuan" ? "HUNYUAN" : "OPENAI";
+  const prefix = provider === "hunyuan" ? "HUNYUAN" : provider === "deepseek" ? "DEEPSEEK" : "OPENAI";
   const inputCentsPerMillion = envNumber(`${prefix}_INPUT_CENTS_PER_MILLION`);
   const outputCentsPerMillion = envNumber(`${prefix}_OUTPUT_CENTS_PER_MILLION`);
   const configuredCachedRate = envNumber(`${prefix}_CACHED_INPUT_CENTS_PER_MILLION`);

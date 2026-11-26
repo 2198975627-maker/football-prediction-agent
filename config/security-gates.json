@@ -4,6 +4,7 @@
     "neverExposeToClient": [
       "OPENAI_API_KEY",
       "HUNYUAN_API_KEY",
+      "DEEPSEEK_API_KEY",
       "API_FOOTBALL_KEY",
       "RAPIDAPI_FOOTBALL_KEY",
       "SPORTMONKS_API_KEY",
@@ -24,6 +25,7 @@
     "forbiddenPublicPrefixes": [
       "NEXT_PUBLIC_OPENAI",
       "NEXT_PUBLIC_HUNYUAN",
+      "NEXT_PUBLIC_DEEPSEEK",
       "NEXT_PUBLIC_ANYSPORT",
       "NEXT_PUBLIC_NAMI",
       "NEXT_PUBLIC_JUHE",
